@@ -6,8 +6,9 @@
 int bot_id = -1;
 new players_arr[MAXPLAYERS];
 new numPlayers = 0;
-new Handle:writeFile;
+new Handle:hedgeFile;
 new Handle:playerFrameArr;
+bool recording = false;
 enum Frame
 {
 	playerButtons = 0,
@@ -28,7 +29,13 @@ public void OnPluginStart()
 {
 	PrintToServer("Starting stv playback plugin");
 	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "pyro");
-	writeFile = OpenFile("test.hedge", "wb");
+	if (recording)
+	{
+		hedgeFile = OpenFile("test.hedge", "wb");
+	}
+	else {
+		hedgeFile = OpenFile("test.hedge", "rb");
+	}
 	playerFrameArr = CreateArray(_:Frame);
 }
 
@@ -47,32 +54,44 @@ public void OnClientPutInServer(int client)
 
 public void OnGameFrame()
 {
-	// get all the currently connected clients
-	int maxplayers = GetMaxClients();
-	numPlayers = 0;
-	for (int j = 1; j < maxplayers + 1; j++)
+	if (recording)
 	{
-		if (IsClientInGame(j) && !IsFakeClient(j))
+		// get all the currently connected clients
+		int maxplayers = GetMaxClients();
+		numPlayers = 0;
+		for (int j = 1; j < maxplayers + 1; j++)
 		{
-			players_arr[numPlayers] = j;
-			numPlayers++;
+			if (IsClientInGame(j) && !IsFakeClient(j))
+			{
+				players_arr[numPlayers] = j;
+				numPlayers++;
+			}
+		}
+
+		// save all their positions
+		for (new i = 0; i < numPlayers; i++)
+		{
+			new frameArr[Frame]; // an array big enough to hold the Frame struct
+			int client_id = players_arr[i];
+			new Float:threeVector[3];
+			GetClientAbsOrigin(client_id, threeVector);
+			Array_Copy(threeVector, frameArr[position], 3);
+			GetClientEyeAngles(client_id, threeVector);
+			Array_Copy(threeVector, frameArr[angle], 3);
+			PrintToChatAll("userid: %d pos: x: %f y: %f z: %f", GetClientUserId(client_id), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
+			PrintToChatAll("userid: %d angle: x: %f, y: %f, z: %f", GetClientUserId(client_id), frameArr[angle][0], frameArr[angle][1], frameArr[angle][2]);
+			PrintToChatAll("size of struct: %d", _:Frame);
+			WriteFile(hedgeFile, frameArr[0], _:Frame, 4);
 		}
 	}
-
-	// save all their positions
-	for (new i = 0; i < numPlayers; i++)
+	else //playback
 	{
-		new frameArr[Frame]; // an array big enough to hold the Frame struct
-		int client_id = players_arr[i];
-		new Float:threeVector[3];
-		GetClientAbsOrigin(client_id, threeVector);
-		Array_Copy(threeVector, frameArr[position], 3);
-		GetClientEyeAngles(client_id, threeVector);
-		Array_Copy(threeVector, frameArr[angle], 3);
-		PrintToChatAll("userid: %d pos: x: %f y: %f z: %f", GetClientUserId(client_id), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
-		PrintToChatAll("userid: %d angle: x: %f, y: %f, z: %f", GetClientUserId(client_id), frameArr[angle][0], frameArr[angle][1], frameArr[angle][2]);
-		PrintToChatAll("size of struct: %d", _:Frame);
-		WriteFile(writeFile, frameArr[0], _:Frame, 4);
+		new frameArr[Frame];
+		if (ReadFile(hedgeFile, frameArr[0], _:Frame, 4))
+		{
+			PrintToChatAll("userid: %d pos: x: %f y: %f z: %f", -1, frameArr[position][0], frameArr[position][1], frameArr[position][2]);
+
+		}	
 	}
 } 
 
