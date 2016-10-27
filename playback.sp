@@ -61,7 +61,7 @@ public void OnGameFrame()
 		numPlayers = 0;
 		for (int j = 1; j < maxplayers + 1; j++)
 		{
-			if (IsClientInGame(j) && !IsFakeClient(j))
+			if (IsClientInGame(j) && !IsFakeClient(j) && IsPlayerAlive(j))
 			{
 				players_arr[numPlayers] = j;
 				numPlayers++;
@@ -89,8 +89,13 @@ public void OnGameFrame()
 		new frameArr[Frame];
 		if (ReadFile(hedgeFile, frameArr[0], _:Frame, 4))
 		{
-			PrintToChatAll("userid: %d pos: x: %f y: %f z: %f", -1, frameArr[position][0], frameArr[position][1], frameArr[position][2]);
 
+			new Float:posRecord[3];
+			Array_Copy(frameArr[position], posRecord, 3);
+			new Float:angRecord[3];
+			Array_Copy(frameArr[angle], angRecord, 3);
+			PrintToChatAll("userid: %d pos: x: %f y: %f z: %f", GetClientUserId(bot_id), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
+			TeleportEntity(bot_id, posRecord, angRecord, NULL_VECTOR);
 		}	
 	}
 } 
