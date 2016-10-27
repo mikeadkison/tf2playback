@@ -6,12 +6,14 @@
 int bot_id = -1;
 new players_arr[MAXPLAYERS];
 new numPlayers = 0;
+new Handle:writeFile;
+new Handle:playerFrameArr;
 enum Frame
 {
 	playerButtons = 0,
 	Float:position[3],
 	Float:angle[3]
-}
+};
 
 public Plugin myinfo =
 {
@@ -26,6 +28,8 @@ public void OnPluginStart()
 {
 	PrintToServer("Starting stv playback plugin");
 	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "pyro");
+	writeFile = OpenFile("test.hedge", "wb");
+	playerFrameArr = CreateArray(_:Frame);
 }
 
 public void OnClientPutInServer(int client)
@@ -58,13 +62,12 @@ public void OnGameFrame()
 	// save all their positions
 	for (new i = 0; i < numPlayers; i++)
 	{
+		new frameArr[Frame]; // an array big enough to hold the Frame struct
 		int client_id = players_arr[i];
-		new Float:absOrigin[3];
-		GetClientAbsOrigin(client_id, absOrigin);
-		new Float:absAngle[3];
-		GetClientAbsAngles(client_id, absAngle);
-		PrintToChatAll("userid: %d pos: x: %f y: %f z: %f", GetClientUserId(client_id), absOrigin[0], absOrigin[1], absOrigin[2]);
-		PrintToChatAll("userid: %d angle: x: %f, y: %f, z: %f", GetClientUserId(client_id), absAngle[0], absAngle[1], absAngle[2]);
+		GetClientAbsOrigin(client_id, frameArr[position]);
+		GetClientEyeAngles(client_id, frameArr[angle]);
+		PrintToChatAll("userid: %d pos: x: %f y: %f z: %f", GetClientUserId(client_id), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
+		PrintToChatAll("userid: %d angle: x: %f, y: %f, z: %f", GetClientUserId(client_id), frameArr[angle][0], frameArr[angle][1], frameArr[angle][2]);
 	}
 } 
 
