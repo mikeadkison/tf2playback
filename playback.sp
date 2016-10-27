@@ -1,7 +1,7 @@
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
-//#include <smlib>
+#include <smlib>
 
 int bot_id = -1;
 new players_arr[MAXPLAYERS];
@@ -64,10 +64,15 @@ public void OnGameFrame()
 	{
 		new frameArr[Frame]; // an array big enough to hold the Frame struct
 		int client_id = players_arr[i];
-		GetClientAbsOrigin(client_id, frameArr[position]);
-		GetClientEyeAngles(client_id, frameArr[angle]);
+		new Float:threeVector[3];
+		GetClientAbsOrigin(client_id, threeVector);
+		Array_Copy(threeVector, frameArr[position], 3);
+		GetClientEyeAngles(client_id, threeVector);
+		Array_Copy(threeVector, frameArr[angle], 3);
 		PrintToChatAll("userid: %d pos: x: %f y: %f z: %f", GetClientUserId(client_id), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
 		PrintToChatAll("userid: %d angle: x: %f, y: %f, z: %f", GetClientUserId(client_id), frameArr[angle][0], frameArr[angle][1], frameArr[angle][2]);
+		PrintToChatAll("size of struct: %d", _:Frame);
+		WriteFile(writeFile, frameArr[0], _:Frame, 4);
 	}
 } 
 
