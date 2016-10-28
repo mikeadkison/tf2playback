@@ -7,13 +7,15 @@ int bot_id = -1;
 new players_arr[MAXPLAYERS];
 new numPlayers = 0;
 new Handle:hedgeFile;
-new Handle:playerFrameArr;
 bool recording = false;
+new playbackUserIds[MAXPLAYERS];
+new numPlaybackBots = 0;
 enum Frame
 {
+	userId = 0,
 	playerButtons = 0,
 	Float:position[3],
-	Float:angle[3]
+	Float:angle[3],
 };
 
 public Plugin myinfo =
@@ -28,15 +30,15 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
 	PrintToServer("Starting stv playback plugin");
-	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "pyro");
+
 	if (recording)
 	{
 		hedgeFile = OpenFile("test.hedge", "wb");
 	}
 	else {
 		hedgeFile = OpenFile("test.hedge", "rb");
+		Array_Fill(playbackUserIds[0], sizeof(playbackUserIds), -1);
 	}
-	playerFrameArr = CreateArray(_:Frame);
 }
 
 public void OnClientPutInServer(int client)
@@ -78,9 +80,11 @@ public void OnGameFrame()
 			Array_Copy(threeVector, frameArr[position], 3);
 			GetClientEyeAngles(client_id, threeVector);
 			Array_Copy(threeVector, frameArr[angle], 3);
-			PrintToChatAll("userid: %d pos: x: %f y: %f z: %f", GetClientUserId(client_id), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
-			PrintToChatAll("userid: %d angle: x: %f, y: %f, z: %f", GetClientUserId(client_id), frameArr[angle][0], frameArr[angle][1], frameArr[angle][2]);
-			PrintToChatAll("size of struct: %d", _:Frame);
+			frameArr[userId] = GetClientUserId(client_id);
+			ShowActivity(0, "recorded userid: %d", frameArr[userId]);	
+			ShowActivity(0, "userid: %d pos: x: %f y: %f z: %f", GetClientUserId(client_id), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
+			ShowActivity(0, "userid: %d angle: x: %f, y: %f, z: %f", GetClientUserId(client_id), frameArr[angle][0], frameArr[angle][1], frameArr[angle][2]);
+			ShowActivity(0, "size of struct: %d", _:Frame);
 			WriteFile(hedgeFile, frameArr[0], _:Frame, 4);
 		}
 	}
@@ -89,18 +93,31 @@ public void OnGameFrame()
 		new frameArr[Frame];
 		if (ReadFile(hedgeFile, frameArr[0], _:Frame, 4))
 		{
-
-			new Float:posRecord[3];
-			Array_Copy(frameArr[position], posRecord, 3);
-			new Float:angRecord[3];
-			Array_Copy(frameArr[angle], angRecord, 3);
-			PrintToChatAll("userid: %d pos: x: %f y: %f z: %f", GetClientUserId(bot_id), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
-			TeleportEntity(bot_id, posRecord, angRecord, NULL_VECTOR);
-		}	
+			new userIdRecord = frameArr[userId];
+			if (Array_FindValue(playbackUserIds[0], sizeof(playbackUserIds), userIdRecord) == -1)
+			{
+				SpawnBotFor(userIdRecord);
+			}
+			else {
+				new Float:posRecord[3];
+				Array_Copy(frameArr[position], posRecord, 3);
+				new Float:angRecord[3];
+				Array_Copy(frameArr[angle], angRecord, 3);
+				PrintToChatAll("userid: %d pos: x: %f y: %f z: %f", GetClientUserId(bot_id), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
+				TeleportEntity(bot_id, posRecord, angRecord, NULL_VECTOR);
+			}
+		}
 	}
 } 
 
 public void Hook_Shoot(int client) 
 {
 	//SetEntProp(bot_id, Prop_Data, "m_nButtons", IN_ATTACK);
+}
+
+public void SpawnBotFor(int userIdRecord)
+{
+	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "heavy");
+	playbackUserIds[numPlaybackBots] = userIdRecord;
+	numPlaybackBots++;
 }
