@@ -59,17 +59,12 @@ public void OnClientPutInServer(int client)
 {
 	if (IsFakeClient(client)) //if a userid still needs a bot paired with it for replay
 	{
-		new arrSize = GetArraySize(playbackUsersNeedingBots);
-		for (new i = 0; i < arrSize; i++)
-		{
-			new userIdRequiringABot = GetArrayCell(playbackUsersNeedingBots, 0);
-			RemoveFromArray(playbackUsersNeedingBots, 0);
-			PrintToChatAll("clieint in server %d %d", userIdRequiringABot, IsFakeClient(client));
-			new botId = client;
-			PushArrayCell(botUserIds, botId); //store thhis bot id and also associate it with the player of the same index in playbackUserIds
-			PrintToChatAll("bot id %d recorded", botId);
-		}
-
+		new userIdRequiringABot = GetArrayCell(playbackUsersNeedingBots, 0);
+		RemoveFromArray(playbackUsersNeedingBots, 0);
+		PrintToChatAll("clieint in server %d %d", userIdRequiringABot, IsFakeClient(client));
+		new botId = client;
+		PushArrayCell(botUserIds, botId); //store thhis bot id and also associate it with the player of the same index in playbackUserIds
+		PrintToChatAll("bot id %d recorded", botId);
 	}
 	SDKHook(client, SDKHook_PreThink, Hook_Shoot);
 }
