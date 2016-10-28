@@ -28,6 +28,7 @@ enum Frame
 	playerButtons,
 	Float:position[3],
 	Float:angle[3],
+	Float:velocity[3],
 }
 
 public Plugin myinfo =
@@ -97,18 +98,20 @@ public void OnGameFrame()
 
 			//write the next frame
 			new frameArr[Frame]; // an array big enough to hold the Frame struct
-			int client_id = players_arr[i];
+			int clientId = players_arr[i];
 			new Float:threeVector[3];
-			GetClientAbsOrigin(client_id, threeVector);
+			GetClientAbsOrigin(clientId, threeVector);
 			Array_Copy(threeVector, frameArr[position], 3);
-			GetClientEyeAngles(client_id, threeVector);
+			GetClientEyeAngles(clientId, threeVector);
 			Array_Copy(threeVector, frameArr[angle], 3);
-			frameArr[userId] = GetClientUserId(client_id);
+			Entity_GetAbsVelocity(clientId, threeVector);
+			Array_Copy(threeVector, frameArr[velocity], 3);
+			frameArr[userId] = GetClientUserId(clientId);
 			ShowActivity(0, "recorded userid: %d", frameArr[userId]);	
 			ShowActivity(0, "userid: %d pos: x: %f y: %f z: %f",
-				GetClientUserId(client_id), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
+				GetClientUserId(clientId), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
 			ShowActivity(0, "userid: %d angle: x: %f, y: %f, z: %f",
-				GetClientUserId(client_id), frameArr[angle][0], frameArr[angle][1], frameArr[angle][2]);
+				GetClientUserId(clientId), frameArr[angle][0], frameArr[angle][1], frameArr[angle][2]);
 			ShowActivity(0, "size of struct: %d", _:Frame);
 			WriteFile(hedgeFile, frameArr[0], _:Frame, 4);
 		}
@@ -143,10 +146,12 @@ public void OnGameFrame()
 					Array_Copy(frameArr[position], posRecord, 3);
 					new Float:angRecord[3];
 					Array_Copy(frameArr[angle], angRecord, 3);
+					new Float:velRecord[3];
+					Array_Copy(frameArr[velocity], velRecord, 3);
 					/*PrintToChatAll("botId: %d pos: x: %f y: %f z: %f", 
 						botId, frameArr[position][0],
 						frameArr[position][1], frameArr[position][2]);*/
-					TeleportEntity(botId, posRecord, angRecord, NULL_VECTOR);
+					TeleportEntity(botId, posRecord, angRecord, velRecord);
 				}
 			}
 			else //hit the next frame, so stop reading for now and put the file pointer back at the beginning of the nextframeinfo
