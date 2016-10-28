@@ -10,9 +10,9 @@ bool recording = false;
 new numPlaybackBots = 0;
 int currFrame = 0;
 new Handle:playbackUserIds; //the user ids of the players who originally played the game
-new Handle:botUserIds; //the user ids of the bots representing the original players. The indices match up between these 2 dynamic arrays
+new Handle:botClientIds; //the user ids of the bots representing the original players. The indices match up between these 2 dynamic arrays
 new Handle:playbackUsersNeedingBots; //playback users who are waiting on bots to represent them
-
+new Handle:botClientsInitiallyTeleported; //have the bots corresponding to these indices been teleported to their start location yet?
 //frame types
 #define PLAYER_INFO 0 // frame with position and angle info
 
@@ -42,10 +42,11 @@ public Plugin myinfo =
 
 public void OnPluginStart()
 {
-	PrintToServer("Starting stv playback plugin");
+	PrintToServer("Starting playback plugin");
 	playbackUserIds = new ArrayList(4, 0);
-	botUserIds = new ArrayList(4, 0);
+	botClientIds = new ArrayList(4, 0);
 	playbackUsersNeedingBots = new ArrayList(4, 0);
+	botClientsInitiallyTeleported = new ArrayList(4, 0);
 	if (recording)
 	{
 		hedgeFile = OpenFile("test.hedge", "wb");
@@ -64,10 +65,10 @@ public void OnClientPutInServer(int client)
 		RemoveFromArray(playbackUsersNeedingBots, 0);
 		PrintToChatAll("clieint in server %d %d", userIdRequiringABot, IsFakeClient(client));
 		new botId = client;
-		PushArrayCell(botUserIds, botId); //store thhis bot id and also associate it with the player of the same index in playbackUserIds
+		PushArrayCell(botClientIds, botId); //store thhis bot id and also associate it with the player of the same index in playbackUserIds
 		PrintToChatAll("bot id %d recorded", botId);
+		SDKHook(client, SDKHook_PreThink, Hook_Shoot);
 	}
-	SDKHook(client, SDKHook_PreThink, Hook_Shoot);
 }
 
 
@@ -141,7 +142,7 @@ public void OnGameFrame()
 				}
 				else //there is already a bot representing this useridrecord ! It will be at the same index in the botid array
 				{
-					new botId = GetArrayCell(botUserIds, userIdRecordIndex);
+					new botId = GetArrayCell(botClientIds, userIdRecordIndex);
 					new Float:posRecord[3];
 					Array_Copy(frameArr[position], posRecord, 3);
 					new Float:angRecord[3];
@@ -151,7 +152,16 @@ public void OnGameFrame()
 					/*PrintToChatAll("botId: %d pos: x: %f y: %f z: %f", 
 						botId, frameArr[position][0],
 						frameArr[position][1], frameArr[position][2]);*/
-					TeleportEntity(botId, posRecord, angRecord, velRecord);
+					//TeleportEntity(botId, posRecord, angRecord, velRecord);
+					if (!GetArrayCell(botClientsInitiallyTeleported, userIdRecordIndex) && IsPlayerAlive(botId))
+					{
+						Entity_SetAbsOrigin(botId, posRecord);
+						SetArrayCell(botClientsInitiallyTeleported, userIdRecordIndex, true);
+					}
+					
+					Entity_SetAbsVelocity(botId, velRecord);
+					Entity_SetAbsAngles(botId, angRecord);
+					//TeleportEntity(botId, NULL_VECTOR, NULL_VECTOR, velRecord);
 				}
 			}
 			else //hit the next frame, so stop reading for now and put the file pointer back at the beginning of the nextframeinfo
@@ -166,7 +176,16 @@ public void OnGameFrame()
 
 public void Hook_Shoot(int client) 
 {
-	//SetEntProp(bot_id, Prop_Data, "m_nButtons", IN_ATTACK);
+	//SetEntProp(client, Prop_Data, "m_nButtons", IN_SPEED);
+}
+
+public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
+{
+	if (GetClientUserId(client) == 3)
+	{
+		//PrintToChatAll("runcmd");
+	}
+	return Plugin_Continue;
 }
 
 public void SpawnBotFor(int userIdRecord)
@@ -175,5 +194,6 @@ public void SpawnBotFor(int userIdRecord)
 	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "pyro");
 	PushArrayCell(playbackUserIds, userIdRecord); //put this useridrecord and its associated bot id (of the bot acting it for this useridrecord) at the same indices in their respective arrays.
 	PushArrayCell(playbackUsersNeedingBots, userIdRecord);
+	PushArrayCell(botClientsInitiallyTeleported, false);
 	numPlaybackBots++;
 }
