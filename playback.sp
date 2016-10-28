@@ -32,9 +32,9 @@ enum Frame
 
 public Plugin myinfo =
 {
-	name = "STV Playback",
+	name = "Playback",
 	author = "Mike",
-	description = "play back your stvs server side",
+	description = "play back your games server side with bots",
 	version = "1.0",
 	url = "mikeadkison.net"
 };
