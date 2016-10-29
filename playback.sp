@@ -57,7 +57,7 @@ new userIdRecord
 new userIdRecordIndex
 
 new Float:threeVector[3];
-
+new botButtons;
 ///////
 
 public Plugin myinfo =
@@ -226,7 +226,7 @@ public void Hook_PostActions(int client)
 
 public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if (recording)
+	if (recording && !IsFakeClient(client))
 	{
 		//describe the upcoming frame
 		frameInfoArr[nextFrame] = currFrame - 1; //currframe is incremented in ongameframe but it's not actually the next frame yet because onplayercmd is called after ongameframe
@@ -282,17 +282,18 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		Entity_SetAbsVelocity(client, velRecord);
 		//PrintToChatAll("client %d abs vel %f %f", client, velRecord[0], velRecord[1]);
 		Entity_SetAbsAngles(client, angRecord);
-		new botButtons = GetArrayCell(botsButtons, botIndex);
+		botButtons = GetArrayCell(botsButtons, botIndex);
 		buttons = botButtons;
 		return Plugin_Changed;
 	}
+
 	return Plugin_Continue;
 }
 
 public void SpawnBotFor(int userIdRecord)
 {
 	PrintToChatAll("spawnbotfor called %d", userIdRecord);
-	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "soldier");
+	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
 	PushArrayCell(playbackUserIds, userIdRecord); //put this useridrecord and its associated bot id (of the bot acting it for this useridrecord) at the same indices in their respective arrays.
 	PushArrayCell(playbackUsersNeedingBots, userIdRecord);
 	PushArrayCell(botClientsInitiallyTeleported, false);
