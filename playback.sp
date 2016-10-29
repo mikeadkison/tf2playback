@@ -13,6 +13,7 @@ new Handle:playbackUserIds; //the user ids of the players who originally played 
 new Handle:botClientIds; //the user ids of the bots representing the original players. The indices match up between these 2 dynamic arrays
 new Handle:playbackUsersNeedingBots; //playback users who are waiting on bots to represent them
 new Handle:botClientsInitiallyTeleported; //have the bots corresponding to these indices been teleported to their start location yet?
+new Handle:botsButtons; //if the bots for these corresponding indices should jump
 //frame types
 #define PLAYER_INFO 0 // frame with position and angle info
 
@@ -47,6 +48,7 @@ public void OnPluginStart()
 	botClientIds = new ArrayList(4, 0);
 	playbackUsersNeedingBots = new ArrayList(4, 0);
 	botClientsInitiallyTeleported = new ArrayList(4, 0);
+	botsButtons = new ArrayList(4, 0);
 	if (recording)
 	{
 		hedgeFile = OpenFile("test.hedge", "wb");
@@ -66,11 +68,12 @@ public void OnClientPutInServer(int client)
 		PrintToChatAll("clieint in server %d %d", userIdRequiringABot, IsFakeClient(client));
 		new botId = client;
 		PushArrayCell(botClientIds, botId); //store thhis bot id and also associate it with the player of the same index in playbackUserIds
+		PushArrayCell(botsButtons, 0);
 		PrintToChatAll("bot id %d recorded", botId);
-		SDKHook(client, SDKHook_PreThink, Hook_Shoot);
+		//SDKHook(client, SDKHook_PreThink, Hook_Shoot);
 	}
+	//SDKHook(client, SDKHook_PreThink, Hook_Buttons);
 }
-
 
 public void OnGameFrame()
 {
@@ -108,6 +111,8 @@ public void OnGameFrame()
 			Entity_GetAbsVelocity(clientId, threeVector);
 			Array_Copy(threeVector, frameArr[velocity], 3);
 			frameArr[userId] = GetClientUserId(clientId);
+			frameArr[playerButtons] = Client_GetButtons(clientId);
+
 			ShowActivity(0, "recorded userid: %d", frameArr[userId]);	
 			ShowActivity(0, "userid: %d pos: x: %f y: %f z: %f",
 				GetClientUserId(clientId), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
@@ -149,18 +154,23 @@ public void OnGameFrame()
 					Array_Copy(frameArr[angle], angRecord, 3);
 					new Float:velRecord[3];
 					Array_Copy(frameArr[velocity], velRecord, 3);
+					//PrintToChatAll("setting buttons:  %d for index %d", frameArr[playerButtons], userIdRecordIndex);
+					if (IsPlayerAlive(botId))
+					{
+						SetArrayCell(botsButtons, userIdRecordIndex, frameArr[playerButtons]);
+					}
 					/*PrintToChatAll("botId: %d pos: x: %f y: %f z: %f", 
 						botId, frameArr[position][0],
 						frameArr[position][1], frameArr[position][2]);*/
-					//TeleportEntity(botId, posRecord, angRecord, velRecord);
+					//TeleportEntity(botId, posRecord, angRecord, velRecord);	
 					if (!GetArrayCell(botClientsInitiallyTeleported, userIdRecordIndex) && IsPlayerAlive(botId))
 					{
 						Entity_SetAbsOrigin(botId, posRecord);
 						SetArrayCell(botClientsInitiallyTeleported, userIdRecordIndex, true);
 					}
-					
 					Entity_SetAbsVelocity(botId, velRecord);
 					Entity_SetAbsAngles(botId, angRecord);
+
 					//TeleportEntity(botId, NULL_VECTOR, NULL_VECTOR, velRecord);
 				}
 			}
@@ -174,16 +184,38 @@ public void OnGameFrame()
 	currFrame++;
 } 
 
-public void Hook_Shoot(int client) 
+public void Hook_Buttons(int client) 
 {
-	//SetEntProp(client, Prop_Data, "m_nButtons", IN_SPEED);
+	Client_AddButtons(client, IN_JUMP);
+	//SetEntProp(client, Prop_Data, "m_nButtons", IN_JUMP);
 }
+
 
 public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if (GetClientUserId(client) == 3)
+
+	// //Entity_AddFlags(client, FL_DUCKING);
+	// if (buttons & IN_JUMP)
+	// {
+	// 	//PrintToChatAll("jumping");
+	// 	//Entity_AddFlags(client, FL_DUCKING);
+	// }
+	// else
+	// {
+	// 	//PrintToChatAll("not jumping");
+	// 	//Entity_RemoveFlags(client, FL_DUCKING);
+	// }
+	// //Entity_AddFlags(client, FL_DUCKING);
+	// if (GetClientUserId(client) == 3)
+	// {
+	// 	//PrintToChatAll("runcmd");
+	// }
+	if (!recording && IsFakeClient(client))
 	{
-		//PrintToChatAll("runcmd");
+		new botIndex = FindValueInArray(botClientIds, client);
+		new botButtons = GetArrayCell(botsButtons, botIndex);
+		buttons = botButtons;
+		return Plugin_Changed;
 	}
 	return Plugin_Continue;
 }
