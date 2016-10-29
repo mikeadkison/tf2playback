@@ -7,6 +7,7 @@
 new numPlayers = 0;
 new Handle:hedgeFile;
 bool recording = false;
+bool playing = false;
 new numPlaybackBots = 0;
 int currFrame = 0;
 new Handle:playbackUserIds; //the user ids of the players who originally played the game
@@ -58,6 +59,7 @@ new userIdRecordIndex
 
 new Float:threeVector[3];
 new botButtons;
+new botIndex;
 ///////
 
 public Plugin myinfo =
@@ -72,19 +74,10 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
 	PrintToServer("Starting playback plugin");
-	// kick all the existing bots
-	// get all the currently connected clients
-	int maxplayers = GetMaxClients();
-	numPlayers = 0;
 
-	//kick old bots
-	for (int j = 1; j < maxplayers + 1; j++)
-	{
-		if (IsClientInGame(j) && IsFakeClient(j))
-		{
-			KickClient(j);
-		}
-	}
+	KickBots();
+
+	numPlayers = 0;
 
 	playbackUserIds = new ArrayList(1, 0);
 	botClientIds = new ArrayList(1, 0);
@@ -95,13 +88,6 @@ public void OnPluginStart()
 	botAngs = new ArrayList(3, 0);
 	botPosits = new ArrayList(3, 0);
 	botPredVels = new ArrayList(3, 0);
-	if (recording)
-	{
-		hedgeFile = OpenFile("test.hedge", "wb");
-	}
-	else {
-		hedgeFile = OpenFile("test.hedge", "rb");
-	}
 }
 
 // capture bot ids so we know which bot is representing what player!
@@ -124,7 +110,7 @@ public void OnClientPutInServer(int client)
 		new Float:threeVector3[3];
 		PushArrayArray(botPredVels, Float:threeVector3);
 		PrintToChatAll("bot id %d recorded", botId);
-		SDKHook(client, SDKHook_PostThink, Hook_PostActions);
+		//SDKHook(client, SDKHook_PostThink, Hook_PostActions);
 	}
 }
 
@@ -144,20 +130,21 @@ public void OnGameFrame()
 		// 	}
 		// }
 	}
-	else //playback
+	else if (playing)//playback
 	{
-
-
+		//PrintToChatAll("Playing");
 		bool hitNextFrame = false;
-		while (!hitNextFrame && ReadFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4))
+		//PrintToChatAll("success: %d", success);
+		while (!hitNextFrame && ReadFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4)) //ISUE
 		{
 			//get info of next frame
 			nextFrameRecord = frameInfoArr[nextFrame];
+			PrintToConsole(FindTarget(0, "Hedgehog Hero"), "reading frame info! %d", nextFrameRecord);
 			nextFrameTypeRecord = frameInfoArr[frameType];
 			if (nextFrameRecord == currFrame)
 			{
 				//get next frame
-				ReadFile(hedgeFile, frameArr[0], _:Frame, 4);
+				new success = ReadFile(hedgeFile, frameArr[0], _:Frame, 4);
 				userIdRecord = frameArr[userId];
 				userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
 				if (userIdRecordIndex == -1) //if thhis user id has not been encountered before (no bot created for it)
@@ -186,7 +173,6 @@ public void OnGameFrame()
 						SetArrayCell(botClientsInitiallyTeleported, userIdRecordIndex, true);
 					}
 
-					new Float:currBotOrigin[3];
 					GetClientAbsOrigin(botId, currBotOrigin);
 					//PrintToChatAll("ongameframe %d pos %f %f", currFrame, currBotOrigin[0], currBotOrigin[1]);
 					//float maxDiff = 10.0;
@@ -210,7 +196,13 @@ public void OnGameFrame()
 			{
 				hitNextFrame = true;
 				FileSeek(hedgeFile, -_:NextFrameInfo * 4, SEEK_CUR);
+				PrintToConsole(FindTarget(0, "Hedgehog Hero"), "seeking backwards %d", currFrame);
 			}
+		}
+		if (IsEndOfFile(hedgeFile))
+		{
+			playing = false;
+			PrintToChatAll("Playback finished.");
 		}
 	}
 	currFrame++;
@@ -232,7 +224,6 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		frameInfoArr[nextFrame] = currFrame - 1; //currframe is incremented in ongameframe but it's not actually the next frame yet because onplayercmd is called after ongameframe
 		frameInfoArr[frameType] = PLAYER_INFO;
 		WriteFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4);
-
 		//write the next frame
 		int clientId = client;
 		GetClientAbsOrigin(clientId, threeVector);
@@ -254,8 +245,9 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		// 	GetClientUserId(clientId), frameArr[velocity][0], frameArr[velocity][1], frameArr[velocity][2]);
 		// ShowActivity(0, "size of struct: %d", _:Frame);
 		WriteFile(hedgeFile, frameArr[0], _:Frame, 4);
+		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "wrote frame %d / pos %f", currFrame, frameArr[position][0]);
 	}
-	else if (!recording && IsFakeClient(client))
+	else if (playing && IsFakeClient(client))
 	{
 		GetClientAbsOrigin(client, currBotOrigin);
 
@@ -263,28 +255,31 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		
 
 
-		new botIndex = FindValueInArray(botClientIds, client);
-		GetArrayArray(botVels, botIndex, velRecord);
-		GetArrayArray(botAngs, botIndex, angRecord);
-		GetArrayArray(botPosits, botIndex, posRecord);
-		GetArrayArray(botPredVels, botIndex, predVelRecord);
-
-		vel = predVelRecord;
-
-		float maxDiff = 10.0;
-		if (Entity_GetDistanceOrigin(client, posRecord) > maxDiff)
+		botIndex = FindValueInArray(botClientIds, client);
+		if (botIndex >= 0) //make sure it's not sourcetv or some other bot/fake client not assoicated with plugin
 		{
-				PrintToChatAll("desync on %d by %f: teleporting curr: %f record: %f vel %f", currFrame,
-					Entity_GetDistanceOrigin(client, posRecord), currBotOrigin[0], posRecord[0], velRecord[0]);
-				TeleportEntity(client, posRecord, NULL_VECTOR, NULL_VECTOR);
-		}
+			GetArrayArray(botVels, botIndex, velRecord);
+			GetArrayArray(botAngs, botIndex, angRecord);
+			GetArrayArray(botPosits, botIndex, posRecord);
+			GetArrayArray(botPredVels, botIndex, predVelRecord);
 
-		Entity_SetAbsVelocity(client, velRecord);
-		//PrintToChatAll("client %d abs vel %f %f", client, velRecord[0], velRecord[1]);
-		Entity_SetAbsAngles(client, angRecord);
-		botButtons = GetArrayCell(botsButtons, botIndex);
-		buttons = botButtons;
-		return Plugin_Changed;
+			vel = predVelRecord;
+
+			float maxDiff = 10.0;
+			if (Entity_GetDistanceOrigin(client, posRecord) > maxDiff)
+			{
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "desync on %d by %f: teleporting curr: %f record: %f vel %f", currFrame,
+						Entity_GetDistanceOrigin(client, posRecord), currBotOrigin[0], posRecord[0], velRecord[0]);
+					TeleportEntity(client, posRecord, NULL_VECTOR, NULL_VECTOR);
+			}
+
+			Entity_SetAbsVelocity(client, velRecord);
+			//PrintToChatAll("client %d abs vel %f %f", client, velRecord[0], velRecord[1]);
+			Entity_SetAbsAngles(client, angRecord);
+			botButtons = GetArrayCell(botsButtons, botIndex);
+			buttons = botButtons;
+			return Plugin_Changed;
+		}
 	}
 
 	return Plugin_Continue;
@@ -292,10 +287,115 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
 public void SpawnBotFor(int userIdRecord)
 {
-	PrintToChatAll("spawnbotfor called %d", userIdRecord);
+	PrintToChatAll("spawnbotfor called for player %d", userIdRecord);
 	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
 	PushArrayCell(playbackUserIds, userIdRecord); //put this useridrecord and its associated bot id (of the bot acting it for this useridrecord) at the same indices in their respective arrays.
 	PushArrayCell(playbackUsersNeedingBots, userIdRecord);
 	PushArrayCell(botClientsInitiallyTeleported, false);
 	numPlaybackBots++;
+}
+
+//hook into say command to allow plugin control
+public Action OnClientSayCommand(int client, const char[] command, const char[] sArgs)
+{
+	if (StrEqual(sArgs, "/start", false))
+	{
+		if (recording)
+		{
+			PrintToChatAll("Already recording");
+			return Plugin_Handled;
+		}
+		else if (playing)
+		{
+			PrintToChatAll("Currently playing something");
+			return Plugin_Handled;
+		}
+		PrintToChatAll("Beginning recording");
+		StartRecording();
+		/* Block the client's messsage from broadcasting */
+ 		return Plugin_Handled;
+	}
+	else if (StrEqual(sArgs, "/stop", false))
+	{
+		if (!recording)
+		{
+			PrintToChatAll("No recording to stop");
+			return Plugin_Handled;
+		}
+		else if (playing)
+		{
+			PrintToChatAll("Currently playing something");
+			return Plugin_Handled;
+		}
+
+		PrintToChatAll("Ending recording");
+		StopRecording();
+		/* Block the client's messsage from broadcasting */
+ 		return Plugin_Handled;
+	}
+	else if (StrEqual(sArgs, "/play", false))
+ 	{
+ 		if (recording)
+ 		{
+ 			PrintToChatAll("Already recording -- can't playback until done recording -- type /stoprecording to stop");
+			return Plugin_Handled;
+ 		}
+ 		PrintToChatAll("Playing recording");
+ 		PlayRecording();
+ 		return Plugin_Handled;
+ 	}
+	/* Let say continue normally */
+	return Plugin_Continue;
+}
+
+
+public void StartRecording()
+{
+	KickBots();
+	currFrame = 0;
+	recording = true;
+	hedgeFile = OpenFile("test.hedge", "wb");
+}
+
+public void StopRecording()
+{
+	recording = false;
+	//CloseHandle(hedgeFile);
+}
+
+public void PlayRecording()
+{
+	KickBots();
+	currFrame = 0;
+	ClearArrays();
+	playing = true;
+	hedgeFile = OpenFile("test.hedge", "rb");
+	PrintToChatAll("hedgefile = null %d", hedgeFile == null);
+	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "hedgeifle position %d", FilePosition(hedgeFile));
+}
+
+public void KickBots()
+{
+	int maxplayers = GetMaxClients();
+	for (int j = 1; j < maxplayers + 1; j++)
+	{
+		if (IsClientInGame(j) && IsFakeClient(j))
+		{
+			KickClient(j);
+		}
+	}
+}
+
+// use this when switching betweeen recording and playback modes
+public void ClearArrays()
+{
+	ClearArray(playbackUserIds); //the user ids of the players who originally played the game
+	ClearArray(botClientIds); //the user ids of the bots representing the original players. The indices match up between these 2 dynamic arrays
+	ClearArray(playbackUsersNeedingBots); //playback users who are waiting on bots to represent them
+	ClearArray(botClientsInitiallyTeleported); //have the bots corresponding to these indices been teleported to their start location yet?
+	ClearArray(botsButtons); //if the bots for these corresponding indices should jump
+	ClearArray(botVels);
+	ClearArray(botAngs);
+	ClearArray(botPosits);
+	ClearArray(botPredVels);
 }
