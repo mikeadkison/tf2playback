@@ -3,7 +3,7 @@
 #include <sdkhooks>
 #include <smlib>
 
-new players_arr[MAXPLAYERS + 1];
+//new players_arr[MAXPLAYERS + 1];
 new numPlayers = 0;
 new Handle:hedgeFile;
 bool recording = false;
@@ -53,6 +53,13 @@ new nextFrameTypeRecord;
 
 new Float:currBotOrigin[3];
 
+new userIdRecord
+new userIdRecordIndex
+
+new Float:threeVector[3];
+
+///////
+
 public Plugin myinfo =
 {
 	name = "Playback",
@@ -79,11 +86,11 @@ public void OnPluginStart()
 		}
 	}
 
-	playbackUserIds = new ArrayList(4, 0);
-	botClientIds = new ArrayList(4, 0);
-	playbackUsersNeedingBots = new ArrayList(4, 0);
-	botClientsInitiallyTeleported = new ArrayList(4, 0);
-	botsButtons = new ArrayList(4, 0);
+	playbackUserIds = new ArrayList(1, 0);
+	botClientIds = new ArrayList(1, 0);
+	playbackUsersNeedingBots = new ArrayList(1, 0);
+	botClientsInitiallyTeleported = new ArrayList(1, 0);
+	botsButtons = new ArrayList(1, 0);
 	botVels = new ArrayList(3, 0);
 	botAngs = new ArrayList(3, 0);
 	botPosits = new ArrayList(3, 0);
@@ -119,7 +126,6 @@ public void OnClientPutInServer(int client)
 		PrintToChatAll("bot id %d recorded", botId);
 		SDKHook(client, SDKHook_PostThink, Hook_PostActions);
 	}
-	//SDKHook(client, SDKHook_PreThink, Hook_Buttons);
 }
 
 public void OnGameFrame()
@@ -137,37 +143,6 @@ public void OnGameFrame()
 		// 		numPlayers++;
 		// 	}
 		// }
-
-		// // save all their positions
-		// for (new i = 0; i < numPlayers; i++)
-		// {
-		// 	//describe the upcoming frame
-		// 	new frameInfoArr[NextFrameInfo];
-		// 	frameInfoArr[nextFrame] = currFrame;
-		// 	frameInfoArr[frameType] = PLAYER_INFO;
-		// 	WriteFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4);
-
-		// 	//write the next frame
-		// 	new frameArr[Frame]; // an array big enough to hold the Frame struct
-		// 	int clientId = players_arr[i];
-		// 	new Float:threeVector[3];
-		// 	GetClientAbsOrigin(clientId, threeVector);
-		// 	Array_Copy(threeVector, frameArr[position], 3);
-		// 	GetClientEyeAngles(clientId, threeVector);
-		// 	Array_Copy(threeVector, frameArr[angle], 3);
-		// 	Entity_GetAbsVelocity(clientId, threeVector);
-		// 	Array_Copy(threeVector, frameArr[velocity], 3);
-		// 	frameArr[userId] = GetClientUserId(clientId);
-		// 	frameArr[playerButtons] = Client_GetButtons(clientId);
-
-		// 	ShowActivity(0, "recorded userid: %d", frameArr[userId]);	
-		// 	ShowActivity(0, "userid: %d pos: x: %f y: %f z: %f",
-		// 		GetClientUserId(clientId), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
-		// 	ShowActivity(0, "userid: %d angle: x: %f, y: %f, z: %f",
-		// 		GetClientUserId(clientId), frameArr[angle][0], frameArr[angle][1], frameArr[angle][2]);
-		// 	ShowActivity(0, "size of struct: %d", _:Frame);
-		// 	WriteFile(hedgeFile, frameArr[0], _:Frame, 4);
-		// }
 	}
 	else //playback
 	{
@@ -183,8 +158,8 @@ public void OnGameFrame()
 			{
 				//get next frame
 				ReadFile(hedgeFile, frameArr[0], _:Frame, 4);
-				new userIdRecord = frameArr[userId];
-				new userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
+				userIdRecord = frameArr[userId];
+				userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
 				if (userIdRecordIndex == -1) //if thhis user id has not been encountered before (no bot created for it)
 				{
 					SpawnBotFor(userIdRecord);
@@ -214,7 +189,7 @@ public void OnGameFrame()
 					new Float:currBotOrigin[3];
 					GetClientAbsOrigin(botId, currBotOrigin);
 					//PrintToChatAll("ongameframe %d pos %f %f", currFrame, currBotOrigin[0], currBotOrigin[1]);
-					float maxDiff = 10.0;
+					//float maxDiff = 10.0;
 					// if (Entity_GetDistanceOrigin(botId, posRecord) > maxDiff)
 					// {
 					// 		PrintToChatAll("desync by %f: teleporting curr: %f record: %f",
@@ -251,23 +226,6 @@ public void Hook_PostActions(int client)
 
 public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	
-	// //Entity_AddFlags(client, FL_DUCKING);
-	// if (buttons & IN_JUMP)
-	// {
-	// 	//PrintToChatAll("jumping");
-	// 	//Entity_AddFlags(client, FL_DUCKING);
-	// }
-	// else
-	// {
-	// 	//PrintToChatAll("not jumping");
-	// 	//Entity_RemoveFlags(client, FL_DUCKING);
-	// }
-	// //Entity_AddFlags(client, FL_DUCKING);
-	// if (GetClientUserId(client) == 3)
-	// {
-	// 	//PrintToChatAll("runcmd");
-	// }
 	if (recording)
 	{
 		//describe the upcoming frame
@@ -277,7 +235,6 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
 		//write the next frame
 		int clientId = client;
-		new Float:threeVector[3];
 		GetClientAbsOrigin(clientId, threeVector);
 		Array_Copy(threeVector, frameArr[position], 3);
 		GetClientEyeAngles(clientId, threeVector);
@@ -288,14 +245,14 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		frameArr[userId] = GetClientUserId(clientId);
 		frameArr[playerButtons] = Client_GetButtons(clientId);
 
-		ShowActivity(0, "recorded userid: %d", frameArr[userId]);	
-		ShowActivity(0, "userid: %d pos: x: %f y: %f z: %f",
-			GetClientUserId(clientId), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
-		ShowActivity(0, "userid: %d angle: x: %f, y: %f, z: %f",
-			GetClientUserId(clientId), frameArr[angle][0], frameArr[angle][1], frameArr[angle][2]);
-		ShowActivity(0, "userid: %d vel: x: %f, y: %f, z: %f",
-			GetClientUserId(clientId), frameArr[velocity][0], frameArr[velocity][1], frameArr[velocity][2]);
-		ShowActivity(0, "size of struct: %d", _:Frame);
+		// ShowActivity(0, "recorded userid: %d", frameArr[userId]);	
+		// ShowActivity(0, "userid: %d pos: x: %f y: %f z: %f",
+		// 	GetClientUserId(clientId), frameArr[position][0], frameArr[position][1], frameArr[position][2]);
+		// ShowActivity(0, "userid: %d angle: x: %f, y: %f, z: %f",
+		// 	GetClientUserId(clientId), frameArr[angle][0], frameArr[angle][1], frameArr[angle][2]);
+		// ShowActivity(0, "userid: %d vel: x: %f, y: %f, z: %f",
+		// 	GetClientUserId(clientId), frameArr[velocity][0], frameArr[velocity][1], frameArr[velocity][2]);
+		// ShowActivity(0, "size of struct: %d", _:Frame);
 		WriteFile(hedgeFile, frameArr[0], _:Frame, 4);
 	}
 	else if (!recording && IsFakeClient(client))
