@@ -6,7 +6,7 @@
 new players_arr[MAXPLAYERS + 1];
 new numPlayers = 0;
 new Handle:hedgeFile;
-bool recording = true;
+bool recording = false;
 new numPlaybackBots = 0;
 int currFrame = 0;
 new Handle:playbackUserIds; //the user ids of the players who originally played the game
@@ -18,6 +18,9 @@ new Handle:botVels;
 new Handle:botAngs;
 new Handle:botPosits;
 new Handle:botPredVels;
+
+
+
 //frame types
 #define PLAYER_INFO 0 // frame with position and angle info
 
@@ -36,6 +39,19 @@ enum Frame
 	Float:velocity[3],
 	Float:predictedVelocity[3],
 }
+
+//playback and recording vars
+new Float:posRecord[3];
+new Float:angRecord[3];
+new Float:velRecord[3];
+new Float:predVelRecord[3]; //record of predicted velocity
+
+new frameArr[Frame];
+new frameInfoArr[NextFrameInfo];
+new nextFrameRecord;
+new nextFrameTypeRecord;
+
+new Float:currBotOrigin[3];
 
 public Plugin myinfo =
 {
@@ -155,10 +171,7 @@ public void OnGameFrame()
 	}
 	else //playback
 	{
-		new frameArr[Frame];
-		new frameInfoArr[NextFrameInfo];
-		new nextFrameRecord;
-		new nextFrameTypeRecord;
+
 
 		bool hitNextFrame = false;
 		while (!hitNextFrame && ReadFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4))
@@ -179,13 +192,9 @@ public void OnGameFrame()
 				else //there is already a bot representing this useridrecord ! It will be at the same index in the botid array
 				{
 					new botId = GetArrayCell(botClientIds, userIdRecordIndex);
-					new Float:posRecord[3];
 					Array_Copy(frameArr[position], posRecord, 3);
-					new Float:angRecord[3];
 					Array_Copy(frameArr[angle], angRecord, 3);
-					new Float:velRecord[3];
 					Array_Copy(frameArr[velocity], velRecord, 3);
-					new Float:predVelRecord[3]; //record of predicted velocity
 					Array_Copy(frameArr[predictedVelocity], predVelRecord, 3);
 					//PrintToChatAll("setting buttons:  %d for index %d", frameArr[playerButtons], userIdRecordIndex);
 					if (IsPlayerAlive(botId))
@@ -262,13 +271,11 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	if (recording)
 	{
 		//describe the upcoming frame
-		new frameInfoArr[NextFrameInfo];
 		frameInfoArr[nextFrame] = currFrame - 1; //currframe is incremented in ongameframe but it's not actually the next frame yet because onplayercmd is called after ongameframe
 		frameInfoArr[frameType] = PLAYER_INFO;
 		WriteFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4);
 
 		//write the next frame
-		new frameArr[Frame]; // an array big enough to hold the Frame struct
 		int clientId = client;
 		new Float:threeVector[3];
 		GetClientAbsOrigin(clientId, threeVector);
@@ -293,15 +300,11 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 	}
 	else if (!recording && IsFakeClient(client))
 	{
-		new Float:currBotOrigin[3];
 		GetClientAbsOrigin(client, currBotOrigin);
 
 		//PrintToChatAll("onplayerruncmd frame %d client %d pos %f %f vel %f %f", currFrame, client, threeVector[0], threeVector[1], vel[0], vel[1]);
 		
-		new Float:velRecord[3];
-		new Float:angRecord[3];
-		new Float:posRecord[3];
-		new Float:predVelRecord[3];
+
 
 		new botIndex = FindValueInArray(botClientIds, client);
 		GetArrayArray(botVels, botIndex, velRecord);
@@ -332,7 +335,7 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 public void SpawnBotFor(int userIdRecord)
 {
 	PrintToChatAll("spawnbotfor called %d", userIdRecord);
-	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "pyro");
+	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "soldier");
 	PushArrayCell(playbackUserIds, userIdRecord); //put this useridrecord and its associated bot id (of the bot acting it for this useridrecord) at the same indices in their respective arrays.
 	PushArrayCell(playbackUsersNeedingBots, userIdRecord);
 	PushArrayCell(botClientsInitiallyTeleported, false);
