@@ -60,6 +60,11 @@ new userIdRecordIndex
 new Float:threeVector[3];
 new botButtons;
 new botIndex;
+
+const BUFF_SIZE = 100;
+new frameInfoBuff[BUFF_SIZE][NextFrameInfo]; //buffer recorded frames and write them at the same time.
+new frameBuff[BUFF_SIZE][Frame];
+new frameBuffIndex = 0;
 ///////
 
 public Plugin myinfo =
@@ -118,6 +123,17 @@ public void OnGameFrame()
 {
 	if (recording)
 	{
+		if (frameBuffIndex == 100) //time to write!
+		{
+			//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "saving! %d", nextFrameRecord);
+			for (new i = 0; i < BUFF_SIZE; i++)
+			{
+				WriteFile(hedgeFile, frameInfoBuff[i][0], _:NextFrameInfo, 4);
+				WriteFile(hedgeFile, frameBuff[i][0], _:Frame, 4);
+				FlushFile(hedgeFile);
+				frameBuffIndex = 0;
+			}
+		}
 		// // get all the currently connected clients
 		// int maxplayers = GetMaxClients();
 		// numPlayers = 0;
@@ -139,12 +155,12 @@ public void OnGameFrame()
 		{
 			//get info of next frame
 			nextFrameRecord = frameInfoArr[nextFrame];
-			PrintToConsole(FindTarget(0, "Hedgehog Hero"), "reading frame info! %d", nextFrameRecord);
+			//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "reading frame info! %d", nextFrameRecord);
 			nextFrameTypeRecord = frameInfoArr[frameType];
 			if (nextFrameRecord == currFrame)
 			{
 				//get next frame
-				new success = ReadFile(hedgeFile, frameArr[0], _:Frame, 4);
+				ReadFile(hedgeFile, frameArr[0], _:Frame, 4);
 				userIdRecord = frameArr[userId];
 				userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
 				if (userIdRecordIndex == -1) //if thhis user id has not been encountered before (no bot created for it)
@@ -196,7 +212,7 @@ public void OnGameFrame()
 			{
 				hitNextFrame = true;
 				FileSeek(hedgeFile, -_:NextFrameInfo * 4, SEEK_CUR);
-				PrintToConsole(FindTarget(0, "Hedgehog Hero"), "seeking backwards %d", currFrame);
+				//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "seeking backwards %d", currFrame);
 			}
 		}
 		if (IsEndOfFile(hedgeFile))
@@ -223,7 +239,7 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		//describe the upcoming frame
 		frameInfoArr[nextFrame] = currFrame - 1; //currframe is incremented in ongameframe but it's not actually the next frame yet because onplayercmd is called after ongameframe
 		frameInfoArr[frameType] = PLAYER_INFO;
-		WriteFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4);
+		//WriteFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4);
 		//write the next frame
 		int clientId = client;
 		GetClientAbsOrigin(clientId, threeVector);
@@ -244,8 +260,13 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		// ShowActivity(0, "userid: %d vel: x: %f, y: %f, z: %f",
 		// 	GetClientUserId(clientId), frameArr[velocity][0], frameArr[velocity][1], frameArr[velocity][2]);
 		// ShowActivity(0, "size of struct: %d", _:Frame);
-		WriteFile(hedgeFile, frameArr[0], _:Frame, 4);
-		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "wrote frame %d / pos %f", currFrame, frameArr[position][0]);
+
+		Array_Copy(frameArr[0], frameBuff[frameBuffIndex][0], _:Frame);
+		Array_Copy(frameInfoArr[0], frameInfoBuff[frameBuffIndex][0], _:NextFrameInfo);
+		frameBuffIndex++;
+		//WriteFile(hedgeFile, frameArr[0], _:Frame, 4);
+		//FlushFile(hedgeFile);
+		//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "wrote frame %d / pos %f", currFrame, frameArr[position][0]);
 	}
 	else if (playing && IsFakeClient(client))
 	{
@@ -371,7 +392,7 @@ public void PlayRecording()
 	playing = true;
 	hedgeFile = OpenFile("test.hedge", "rb");
 	PrintToChatAll("hedgefile = null %d", hedgeFile == null);
-	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "hedgeifle position %d", FilePosition(hedgeFile));
+	//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "hedgeifle position %d", FilePosition(hedgeFile));
 }
 
 public void KickBots()
