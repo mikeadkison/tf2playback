@@ -24,6 +24,7 @@ new Handle:botPredVels;
 
 //frame types
 #define PLAYER_INFO 0 // frame with position and angle info
+#define WEAPON_SWITCH
 
 enum NextFrameInfo
 {
@@ -93,6 +94,16 @@ public void OnPluginStart()
 	botAngs = new ArrayList(3, 0);
 	botPosits = new ArrayList(3, 0);
 	botPredVels = new ArrayList(3, 0);
+
+	int maxplayers = GetMaxClients();
+	for (int client = 1; client < maxplayers + 1; client++)
+	{
+		if (IsClientInGame(client) && !IsFakeClient(client))
+		{
+			SDKHook(client, SDKHook_WeaponSwitchPost, OnWeaponSwitch); //need this to detect weapon switches when recording
+			numPlayers++;
+		}
+	}
 }
 
 // capture bot ids so we know which bot is representing what player!
@@ -116,6 +127,10 @@ public void OnClientPutInServer(int client)
 		PushArrayArray(botPredVels, Float:threeVector3);
 		PrintToChatAll("bot id %d recorded", botId);
 		//SDKHook(client, SDKHook_PostThink, Hook_PostActions);
+	}
+	else //need this to detect weapon switches when recording
+	{
+		SDKHook(client, SDKHook_WeaponSwitchPost, OnWeaponSwitch);
 	}
 }
 
@@ -309,17 +324,22 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 public void SpawnBotFor(int userIdRecord)
 {
 	PrintToChatAll("spawnbotfor called for player %d", userIdRecord);
-	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "pyro");
 	PushArrayCell(playbackUserIds, userIdRecord); //put this useridrecord and its associated bot id (of the bot acting it for this useridrecord) at the same indices in their respective arrays.
 	PushArrayCell(playbackUsersNeedingBots, userIdRecord);
 	PushArrayCell(botClientsInitiallyTeleported, false);
 	numPlaybackBots++;
 }
 
+public Action:OnWeaponSwitch(int client, int weapon)
+{
+	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "client %d switched to weapon %d", client, weapon);
+}
+
 //hook into say command to allow plugin control
 public Action OnClientSayCommand(int client, const char[] command, const char[] sArgs)
 {
-	if (StrEqual(sArgs, "/start", false))
+	if (StrEqual(sArgs, "/r", false))
 	{
 		if (recording)
 		{
@@ -336,7 +356,7 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 		/* Block the client's messsage from broadcasting */
  		return Plugin_Handled;
 	}
-	else if (StrEqual(sArgs, "/stop", false))
+	else if (StrEqual(sArgs, "/s", false))
 	{
 		if (!recording)
 		{
@@ -354,7 +374,7 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 		/* Block the client's messsage from broadcasting */
  		return Plugin_Handled;
 	}
-	else if (StrEqual(sArgs, "/play", false))
+	else if (StrEqual(sArgs, "/p", false))
  	{
  		if (recording)
  		{
