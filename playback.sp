@@ -47,7 +47,8 @@ enum Frame
 enum WeaponSwitch
 {
 	weaponSwitcherUserId = 0,
-	String:weaponId[64], //the name of the weapon (https://wiki.alliedmods.net/Team_Fortress_2_Item_Definition_Indexes)
+	weaponId, //the index of the weapon (https://wiki.alliedmods.net/Team_Fortress_2_Item_Definition_Indexes)
+	weaponSlot,
 }
 
 //playback and recording vars
@@ -276,7 +277,10 @@ public void OnGameFrame()
 					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, userIdRecord));
 					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "switched to wep %s on bot %d", weaponSwitchArr[weaponId], GetClientUserId(clientId));
 
-					Client_GiveWeapon(clientId, weaponSwitchArr[weaponId], true);
+					TF2Items_GiveWeapon(clientId, weaponSwitchArr[weaponId]);
+					//force a switch to new weapon
+					new weapon = GetPlayerWeaponSlot(clientId, weaponSwitchArr[weaponSlot]);
+					SetEntPropEnt(clientId, Prop_Send, "m_hActiveWeapon", weapon); 
 					//EquipPlayerWeapon(clientId, weaponIdRecord);
 				}
 			}
@@ -388,9 +392,28 @@ public Action OnWeaponSwitch(int client, int weapon)
 	//record the weapon switch to a buffer to be written to file later
 	if (recording)
 	{
-		GetClientWeapon(client, weaponSwitchArr[weaponId], sizeof(weaponSwitchArr[weaponId]));
+		//GetClientWeapon(client, weaponSwitchArr[weaponId], sizeof(weaponSwitchArr[weaponId]));
 		weaponSwitchArr[weaponSwitcherUserId] = GetClientUserId(client);
+		int iItemDefinitionIndex = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex");
+		weaponSwitchArr[weaponId] = iItemDefinitionIndex;
+
+		//figure out what slot the player is currently in
+		new slotWeapon = -1;
+		bool cont = true;
+		for (int i = 0; i < 7 && cont; i++) //pretend there are 7 slots just in case lol .. pretty sure there are only 3 - 5 per class
+		{
+			slotWeapon = GetPlayerWeaponSlot(client, i);
+			if (slotWeapon == weapon)
+			{
+				weaponSwitchArr[weaponSlot] = i;
+				cont = false;
+			}
+		}
+
+		
 		PushArrayArray(weaponSwitchesBuff, weaponSwitchArr[0]);
+
+		
 
 		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "user id %d switched to weapon %d called %s",
 			GetClientUserId(client), weapon, weaponSwitchArr[weaponSwitcherUserId]);
