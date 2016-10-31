@@ -2,6 +2,8 @@
 #include <sdktools>
 #include <sdkhooks>
 #include <smlib>
+#include <tf2_stocks>
+#include <tf2items_giveweapon>
 
 //new players_arr[MAXPLAYERS + 1];
 new numPlayers = 0;
@@ -29,7 +31,7 @@ new Handle:botPredVels;
 enum NextFrameInfo
 {
 	frameType = 0,
-	nextFrame 
+	nextFrame,
 }
 
 enum Frame
@@ -45,7 +47,7 @@ enum Frame
 enum WeaponSwitch
 {
 	weaponSwitcherUserId = 0,
-	weaponId,
+	String:weaponId[64], //the name of the weapon (https://wiki.alliedmods.net/Team_Fortress_2_Item_Definition_Indexes)
 }
 
 //playback and recording vars
@@ -268,13 +270,14 @@ public void OnGameFrame()
 					//get next weapon switch info
 					ReadFile(hedgeFile, weaponSwitchArr[0], _:WeaponSwitch, 4);
 					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "read file for weapon switch");
-					new weaponIdRecord = weaponSwitchArr[weaponId];
 					new userIdRecord = weaponSwitchArr[weaponSwitcherUserId];
-					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "index of recorded userid %d is %d with wep %d",
-						userIdRecord, FindValueInArray(playbackUserIds, userIdRecord), weaponIdRecord);
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "index of recorded userid %d is %d with wep %s",
+						userIdRecord, FindValueInArray(playbackUserIds, userIdRecord), weaponSwitchArr[weaponId]);
 					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, userIdRecord));
-					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "switched to wep %d on bot %d", weaponIdRecord, GetClientUserId(clientId));
-					EquipPlayerWeapon(clientId, weaponIdRecord);
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "switched to wep %s on bot %d", weaponSwitchArr[weaponId], GetClientUserId(clientId));
+
+					Client_GiveWeapon(clientId, weaponSwitchArr[weaponId], true);
+					//EquipPlayerWeapon(clientId, weaponIdRecord);
 				}
 			}
 			else //hit the next frame, so stop reading for now and put the file pointer back at the beginning of the nextframeinfo
@@ -380,13 +383,17 @@ public void SpawnBotFor(int userIdRecord)
 
 public Action OnWeaponSwitch(int client, int weapon)
 {
-	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "user id %d switched to weapon %d", GetClientUserId(client), weapon);
+	//int iItemDefinitionIndex = GetEntProp(weapon, Prop_Send, "m_iItemDefinitionIndex"); //given the entity index of weapon, find the item definition index of weapon
+
 	//record the weapon switch to a buffer to be written to file later
 	if (recording)
 	{
+		Client_GetActiveWeaponName(client, weaponSwitchArr[weaponId], sizeof(weaponSwitchArr[weaponId]));
 		weaponSwitchArr[weaponSwitcherUserId] = GetClientUserId(client);
-		weaponSwitchArr[weaponId] = weapon;
 		PushArrayArray(weaponSwitchesBuff, weaponSwitchArr[0]);
+
+		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "user id %d switched to weapon %d called %s",
+			GetClientUserId(client), weapon, weaponSwitchArr[weaponSwitcherUserId]);
 
 		frameInfoArr[frameType] = WEAPON_SWITCH;
 		frameInfoArr[nextFrame] = currFrame - 1;
