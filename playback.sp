@@ -21,6 +21,7 @@ new Handle:botVels;
 new Handle:botAngs;
 new Handle:botPosits;
 new Handle:botPredVels;
+new Handle:botHealths; //recorded health (rocket jumping does inconsistent damage on replay)
 
 
 
@@ -42,6 +43,7 @@ enum Frame
 	Float:angle[3],
 	Float:velocity[3],
 	Float:predictedVelocity[3],
+	health,
 }
 
 enum WeaponSwitch
@@ -106,6 +108,7 @@ public void OnPluginStart()
 	botAngs = new ArrayList(3, 0);
 	botPosits = new ArrayList(3, 0);
 	botPredVels = new ArrayList(3, 0);
+	botHealths = new ArrayList(1, 0);
 
 	weaponSwitchesBuff = new ArrayList(_:WeaponSwitch, 0);
 	weaponSwitchesFrameInfoBuff = new ArrayList(_:NextFrameInfo, 0);
@@ -140,6 +143,7 @@ public void OnClientPutInServer(int client)
 		PushArrayArray(botPosits, Float:threeVector2);
 		new Float:threeVector3[3];
 		PushArrayArray(botPredVels, Float:threeVector3);
+		PushArrayCell(botHealths, -1);
 		PrintToChatAll("bot id %d recorded", botId);
 		//SDKHook(client, SDKHook_PostThink, Hook_PostActions);
 	}
@@ -259,6 +263,7 @@ public void OnGameFrame()
 						SetArrayArray(botAngs, userIdRecordIndex, angRecord);
 						SetArrayArray(botPosits, userIdRecordIndex, posRecord);
 						SetArrayArray(botPredVels, userIdRecordIndex, predVelRecord);
+						SetArrayCell(botHealths, userIdRecordIndex, frameArr[health]);
 						// Entity_SetAbsVelocity(botId, velRecord);
 						// Entity_SetAbsAngles(botId, angRecord);
 
@@ -320,6 +325,7 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		Array_Copy(vel, frameArr[predictedVelocity], 3);
 		frameArr[userId] = GetClientUserId(clientId);
 		frameArr[playerButtons] = Client_GetButtons(clientId);
+		frameArr[health] = GetClientHealth(client);
 
 		// ShowActivity(0, "recorded userid: %d", frameArr[userId]);	
 		// ShowActivity(0, "userid: %d pos: x: %f y: %f z: %f",
@@ -352,6 +358,7 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 			GetArrayArray(botAngs, botIndex, angRecord);
 			GetArrayArray(botPosits, botIndex, posRecord);
 			GetArrayArray(botPredVels, botIndex, predVelRecord);
+			SetEntityHealth(client, GetArrayCell(botHealths, botIndex));
 
 			vel = predVelRecord;
 
