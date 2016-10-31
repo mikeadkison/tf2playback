@@ -61,8 +61,6 @@ new nextFrameTypeRecord;
 
 new Float:currBotOrigin[3];
 
-new userIdRecord
-new userIdRecordIndex
 
 new Float:threeVector[3];
 new botButtons;
@@ -176,10 +174,10 @@ public void OnGameFrame()
 						WriteFile(hedgeFile, weaponSwitchArr[0], _:WeaponSwitch, 4); //write the sparse weapon switch event;
 						//remove from buffer
 						RemoveFromArray(weaponSwitchesBuff, 0);
+						RemoveFromArray(weaponSwitchesFrameInfoBuff, 0);
 					} else
 					{
 						foundAllSparseEventsForFrame = true; //done interleaving sparse events for this framez
-						PrintToConsole(FindTarget(0, "Hedgehog Hero"), "nextframe %d framenum %d", frameInfoArr, frameNum);
 					}
 				}
 
@@ -205,7 +203,7 @@ public void OnGameFrame()
 		//PrintToChatAll("Playing");
 		bool hitNextFrame = false;
 		//PrintToChatAll("success: %d", success);
-		while (!hitNextFrame && ReadFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4)) //ISUE
+		while (!hitNextFrame && ReadFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4))
 		{
 			//get info of next frame
 			nextFrameRecord = frameInfoArr[nextFrame];
@@ -217,8 +215,8 @@ public void OnGameFrame()
 				{
 					//get next frame
 					ReadFile(hedgeFile, frameArr[0], _:Frame, 4);
-					userIdRecord = frameArr[userId];
-					userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
+					new userIdRecord = frameArr[userId];
+					new userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
 					if (userIdRecordIndex == -1) //if thhis user id has not been encountered before (no bot created for it)
 					{
 						SpawnBotFor(userIdRecord);
@@ -266,14 +264,17 @@ public void OnGameFrame()
 				}
 				else if (WEAPON_SWITCH == nextFrameTypeRecord) // sparse event -- weapon switch
 				{
-					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "weapon switch detected");
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "weapon switch read");
 					//get next weapon switch info
 					ReadFile(hedgeFile, weaponSwitchArr[0], _:WeaponSwitch, 4);
-					new weaponId = weaponSwitchArr[weaponId];
-					new userId = weaponSwitchArr[weaponSwitcherUserId];
-					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, userId));
-					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "switched to wep %d", weaponId);
-					EquipPlayerWeapon(clientId, weaponId);
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "read file for weapon switch");
+					new weaponIdRecord = weaponSwitchArr[weaponId];
+					new userIdRecord = weaponSwitchArr[weaponSwitcherUserId];
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "index of recorded userid %d is %d with wep %d",
+						userIdRecord, FindValueInArray(playbackUserIds, userIdRecord), weaponIdRecord);
+					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, userIdRecord));
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "switched to wep %d on bot %d", weaponIdRecord, GetClientUserId(clientId));
+					EquipPlayerWeapon(clientId, weaponIdRecord);
 				}
 			}
 			else //hit the next frame, so stop reading for now and put the file pointer back at the beginning of the nextframeinfo
@@ -379,7 +380,7 @@ public void SpawnBotFor(int userIdRecord)
 
 public Action OnWeaponSwitch(int client, int weapon)
 {
-	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "client %d switched to weapon %d", client, weapon);
+	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "user id %d switched to weapon %d", GetClientUserId(client), weapon);
 	//record the weapon switch to a buffer to be written to file later
 	if (recording)
 	{
@@ -391,6 +392,7 @@ public Action OnWeaponSwitch(int client, int weapon)
 		frameInfoArr[nextFrame] = currFrame - 1;
 		PushArrayArray(weaponSwitchesFrameInfoBuff, frameInfoArr[0]);
 	}
+	return Plugin_Continue;
 }
 
 //hook into say command to allow plugin control
