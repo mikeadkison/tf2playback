@@ -374,7 +374,7 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 public void SpawnBotFor(int userIdRecord)
 {
 	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "spawnbotfor called for player %d", userIdRecord);
-	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "pyro");
+	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
 	PushArrayCell(playbackUserIds, userIdRecord); //put this useridrecord and its associated bot id (of the bot acting it for this useridrecord) at the same indices in their respective arrays.
 	PushArrayCell(playbackUsersNeedingBots, userIdRecord);
 	PushArrayCell(botClientsInitiallyTeleported, false);
@@ -388,7 +388,7 @@ public Action OnWeaponSwitch(int client, int weapon)
 	//record the weapon switch to a buffer to be written to file later
 	if (recording)
 	{
-		Client_GetActiveWeaponName(client, weaponSwitchArr[weaponId], sizeof(weaponSwitchArr[weaponId]));
+		GetClientWeapon(client, weaponSwitchArr[weaponId], sizeof(weaponSwitchArr[weaponId]));
 		weaponSwitchArr[weaponSwitcherUserId] = GetClientUserId(client);
 		PushArrayArray(weaponSwitchesBuff, weaponSwitchArr[0]);
 
