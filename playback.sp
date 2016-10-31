@@ -24,7 +24,7 @@ new Handle:botPredVels;
 
 //frame types
 #define PLAYER_INFO 0 // frame with position and angle info
-#define WEAPON_SWITCH
+#define WEAPON_SWITCH 1 // frame with info about a weapon switch
 
 enum NextFrameInfo
 {
@@ -40,6 +40,12 @@ enum Frame
 	Float:angle[3],
 	Float:velocity[3],
 	Float:predictedVelocity[3],
+}
+
+enum WeaponSwitch
+{
+	weaponSwitcherUserId = 0,
+	weaponId,
 }
 
 //playback and recording vars
@@ -63,9 +69,14 @@ new botButtons;
 new botIndex;
 
 const BUFF_SIZE = 100;
-new frameInfoBuff[BUFF_SIZE][NextFrameInfo]; //buffer recorded frames and write them at the same time.
+new frameInfoBuff[BUFF_SIZE][NextFrameInfo]; //buffer recorded nonsparse frames and write them at the same time.
 new frameBuff[BUFF_SIZE][Frame];
 new frameBuffIndex = 0;
+
+new Handle:weaponSwitchesBuff; // dynamic array of weapon switch events
+new Handle:weaponSwitchesFrameInfoBuff; //buffer NextFrameInfos for weapon switches also
+new weaponSwitchArr[WeaponSwitch];
+//new nextWeaponSwitchArr[WeaponSwitch]; //used to interleave weapon switch events with nonsparse events like movement
 ///////
 
 public Plugin myinfo =
@@ -94,6 +105,9 @@ public void OnPluginStart()
 	botAngs = new ArrayList(3, 0);
 	botPosits = new ArrayList(3, 0);
 	botPredVels = new ArrayList(3, 0);
+
+	weaponSwitchesBuff = new ArrayList(_:WeaponSwitch, 0);
+	weaponSwitchesFrameInfoBuff = new ArrayList(_:NextFrameInfo, 0);
 
 	int maxplayers = GetMaxClients();
 	for (int client = 1; client < maxplayers + 1; client++)
@@ -138,16 +152,41 @@ public void OnGameFrame()
 {
 	if (recording)
 	{
-		if (frameBuffIndex == 100) //time to write!
+		if (frameBuffIndex == 100) //time to write to file!
 		{
 			//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "saving! %d", nextFrameRecord);
+
 			for (new i = 0; i < BUFF_SIZE; i++)
 			{
 				WriteFile(hedgeFile, frameInfoBuff[i][0], _:NextFrameInfo, 4);
 				WriteFile(hedgeFile, frameBuff[i][0], _:Frame, 4);
+
+				new frameNum = frameInfoBuff[i][nextFrame];
+				bool foundAllSparseEventsForFrame = false;
+				//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "weaponswitchesbuff size %d", GetArraySize(weaponSwitchesBuff));
+				while (GetArraySize(weaponSwitchesBuff) > 0 && !foundAllSparseEventsForFrame)
+				{
+					GetArrayArray(weaponSwitchesBuff, 0, weaponSwitchArr[0]);
+					GetArrayArray(weaponSwitchesFrameInfoBuff, 0, frameInfoArr[0]);
+					//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "weaponswitchframe %d currentframe %d", nextWeaponSwitchArr[nextFrame], frameNum);
+					if (frameInfoArr[nextFrame] == frameNum) //if this weapon switch event occurs on the same frame as the nonsparse events (angle and velocity updates contained in Frame)
+					{
+						PrintToConsole(FindTarget(0, "Hedgehog Hero"), "writing weapon switch to wep %d", weaponSwitchArr[weaponId]);
+						WriteFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4); //write a description of the upcoming sparse event
+						WriteFile(hedgeFile, weaponSwitchArr[0], _:WeaponSwitch, 4); //write the sparse weapon switch event;
+						//remove from buffer
+						RemoveFromArray(weaponSwitchesBuff, 0);
+					} else
+					{
+						foundAllSparseEventsForFrame = true; //done interleaving sparse events for this framez
+						PrintToConsole(FindTarget(0, "Hedgehog Hero"), "nextframe %d framenum %d", frameInfoArr, frameNum);
+					}
+				}
+
+
 				FlushFile(hedgeFile);
-				frameBuffIndex = 0;
 			}
+			frameBuffIndex = 0;
 		}
 		// // get all the currently connected clients
 		// int maxplayers = GetMaxClients();
@@ -174,53 +213,67 @@ public void OnGameFrame()
 			nextFrameTypeRecord = frameInfoArr[frameType];
 			if (nextFrameRecord == currFrame)
 			{
-				//get next frame
-				ReadFile(hedgeFile, frameArr[0], _:Frame, 4);
-				userIdRecord = frameArr[userId];
-				userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
-				if (userIdRecordIndex == -1) //if thhis user id has not been encountered before (no bot created for it)
+				if (PLAYER_INFO == nextFrameTypeRecord) //nonsparse event - player rotation and location and button info
 				{
-					SpawnBotFor(userIdRecord);
+					//get next frame
+					ReadFile(hedgeFile, frameArr[0], _:Frame, 4);
+					userIdRecord = frameArr[userId];
+					userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
+					if (userIdRecordIndex == -1) //if thhis user id has not been encountered before (no bot created for it)
+					{
+						SpawnBotFor(userIdRecord);
+					}
+					else //there is already a bot representing this useridrecord ! It will be at the same index in the botid array
+					{
+						new botId = GetArrayCell(botClientIds, userIdRecordIndex);
+						Array_Copy(frameArr[position], posRecord, 3);
+						Array_Copy(frameArr[angle], angRecord, 3);
+						Array_Copy(frameArr[velocity], velRecord, 3);
+						Array_Copy(frameArr[predictedVelocity], predVelRecord, 3);
+						//PrintToChatAll("setting buttons:  %d for index %d", frameArr[playerButtons], userIdRecordIndex);
+						if (IsPlayerAlive(botId))
+						{
+							SetArrayCell(botsButtons, userIdRecordIndex, frameArr[playerButtons]);
+						}
+						/*PrintToChatAll("botId: %d pos: x: %f y: %f z: %f", 
+							botId, frameArr[position][0],
+							frameArr[position][1], frameArr[position][2]);*/
+						//TeleportEntity(botId, posRecord, angRecord, velRecord);	
+						if (!GetArrayCell(botClientsInitiallyTeleported, userIdRecordIndex) && IsPlayerAlive(botId))
+						{
+							Entity_SetAbsOrigin(botId, posRecord);
+							SetArrayCell(botClientsInitiallyTeleported, userIdRecordIndex, true);
+						}
+
+						GetClientAbsOrigin(botId, currBotOrigin);
+						//PrintToChatAll("ongameframe %d pos %f %f", currFrame, currBotOrigin[0], currBotOrigin[1]);
+						//float maxDiff = 10.0;
+						// if (Entity_GetDistanceOrigin(botId, posRecord) > maxDiff)
+						// {
+						// 		PrintToChatAll("desync by %f: teleporting curr: %f record: %f",
+						// 			Entity_GetDistanceOrigin(botId, posRecord), currBotOrigin[0], posRecord[0]);
+						// 		TeleportEntity(botId, posRecord, NULL_VECTOR, NULL_VECTOR);
+						// }
+						SetArrayArray(botVels, userIdRecordIndex, velRecord);
+						SetArrayArray(botAngs, userIdRecordIndex, angRecord);
+						SetArrayArray(botPosits, userIdRecordIndex, posRecord);
+						SetArrayArray(botPredVels, userIdRecordIndex, predVelRecord);
+						// Entity_SetAbsVelocity(botId, velRecord);
+						// Entity_SetAbsAngles(botId, angRecord);
+
+						//TeleportEntity(botId, NULL_VECTOR, NULL_VECTOR, velRecord);
+					}
 				}
-				else //there is already a bot representing this useridrecord ! It will be at the same index in the botid array
+				else if (WEAPON_SWITCH == nextFrameTypeRecord) // sparse event -- weapon switch
 				{
-					new botId = GetArrayCell(botClientIds, userIdRecordIndex);
-					Array_Copy(frameArr[position], posRecord, 3);
-					Array_Copy(frameArr[angle], angRecord, 3);
-					Array_Copy(frameArr[velocity], velRecord, 3);
-					Array_Copy(frameArr[predictedVelocity], predVelRecord, 3);
-					//PrintToChatAll("setting buttons:  %d for index %d", frameArr[playerButtons], userIdRecordIndex);
-					if (IsPlayerAlive(botId))
-					{
-						SetArrayCell(botsButtons, userIdRecordIndex, frameArr[playerButtons]);
-					}
-					/*PrintToChatAll("botId: %d pos: x: %f y: %f z: %f", 
-						botId, frameArr[position][0],
-						frameArr[position][1], frameArr[position][2]);*/
-					//TeleportEntity(botId, posRecord, angRecord, velRecord);	
-					if (!GetArrayCell(botClientsInitiallyTeleported, userIdRecordIndex) && IsPlayerAlive(botId))
-					{
-						Entity_SetAbsOrigin(botId, posRecord);
-						SetArrayCell(botClientsInitiallyTeleported, userIdRecordIndex, true);
-					}
-
-					GetClientAbsOrigin(botId, currBotOrigin);
-					//PrintToChatAll("ongameframe %d pos %f %f", currFrame, currBotOrigin[0], currBotOrigin[1]);
-					//float maxDiff = 10.0;
-					// if (Entity_GetDistanceOrigin(botId, posRecord) > maxDiff)
-					// {
-					// 		PrintToChatAll("desync by %f: teleporting curr: %f record: %f",
-					// 			Entity_GetDistanceOrigin(botId, posRecord), currBotOrigin[0], posRecord[0]);
-					// 		TeleportEntity(botId, posRecord, NULL_VECTOR, NULL_VECTOR);
-					// }
-					SetArrayArray(botVels, userIdRecordIndex, velRecord);
-					SetArrayArray(botAngs, userIdRecordIndex, angRecord);
-					SetArrayArray(botPosits, userIdRecordIndex, posRecord);
-					SetArrayArray(botPredVels, userIdRecordIndex, predVelRecord);
-					// Entity_SetAbsVelocity(botId, velRecord);
-					// Entity_SetAbsAngles(botId, angRecord);
-
-					//TeleportEntity(botId, NULL_VECTOR, NULL_VECTOR, velRecord);
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "weapon switch detected");
+					//get next weapon switch info
+					ReadFile(hedgeFile, weaponSwitchArr[0], _:WeaponSwitch, 4);
+					new weaponId = weaponSwitchArr[weaponId];
+					new userId = weaponSwitchArr[weaponSwitcherUserId];
+					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, userId));
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "switched to wep %d", weaponId);
+					EquipPlayerWeapon(clientId, weaponId);
 				}
 			}
 			else //hit the next frame, so stop reading for now and put the file pointer back at the beginning of the nextframeinfo
@@ -238,13 +291,6 @@ public void OnGameFrame()
 	}
 	currFrame++;
 } 
-
-public void Hook_PostActions(int client) 
-{
-	FindValueInArray(botClientIds, client);
-	//Client_AddButtons(client, IN_JUMP);
-	//SetEntProp(client, Prop_Data, "m_nButtons", IN_JUMP);
-}
 
 
 public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
@@ -323,7 +369,7 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 
 public void SpawnBotFor(int userIdRecord)
 {
-	PrintToChatAll("spawnbotfor called for player %d", userIdRecord);
+	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "spawnbotfor called for player %d", userIdRecord);
 	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "pyro");
 	PushArrayCell(playbackUserIds, userIdRecord); //put this useridrecord and its associated bot id (of the bot acting it for this useridrecord) at the same indices in their respective arrays.
 	PushArrayCell(playbackUsersNeedingBots, userIdRecord);
@@ -331,9 +377,20 @@ public void SpawnBotFor(int userIdRecord)
 	numPlaybackBots++;
 }
 
-public Action:OnWeaponSwitch(int client, int weapon)
+public Action OnWeaponSwitch(int client, int weapon)
 {
 	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "client %d switched to weapon %d", client, weapon);
+	//record the weapon switch to a buffer to be written to file later
+	if (recording)
+	{
+		weaponSwitchArr[weaponSwitcherUserId] = GetClientUserId(client);
+		weaponSwitchArr[weaponId] = weapon;
+		PushArrayArray(weaponSwitchesBuff, weaponSwitchArr[0]);
+
+		frameInfoArr[frameType] = WEAPON_SWITCH;
+		frameInfoArr[nextFrame] = currFrame - 1;
+		PushArrayArray(weaponSwitchesFrameInfoBuff, frameInfoArr[0]);
+	}
 }
 
 //hook into say command to allow plugin control
