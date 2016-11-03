@@ -71,15 +71,11 @@ new Float:threeVector[3];
 new botButtons;
 new botIndex;
 
-const BUFF_SIZE = 100;
-new frameInfoBuff[BUFF_SIZE][NextFrameInfo]; //buffer recorded nonsparse frames and write them at the same time.
-new frameBuff[BUFF_SIZE][Frame];
-new frameBuffIndex = 0;
+const BUFF_SIZE = 1000;
+new eventBuffer[BUFF_SIZE]; //holds everything that happens and is written to file occasionally
+new buffIndex = 0;
 
-new Handle:weaponSwitchesBuff; // dynamic array of weapon switch events
-new Handle:weaponSwitchesFrameInfoBuff; //buffer NextFrameInfos for weapon switches also
-new weaponSwitchArr[WeaponSwitch];
-//new nextWeaponSwitchArr[WeaponSwitch]; //used to interleave weapon switch events with nonsparse events like movement
+new weaponSwitchArr[_:WeaponSwitch];
 ///////
 
 public Plugin myinfo =
@@ -110,8 +106,6 @@ public void OnPluginStart()
 	botPredVels = new ArrayList(3, 0);
 	botHealths = new ArrayList(1, 0);
 
-	weaponSwitchesBuff = new ArrayList(_:WeaponSwitch, 0);
-	weaponSwitchesFrameInfoBuff = new ArrayList(_:NextFrameInfo, 0);
 
 	int maxplayers = GetMaxClients();
 	for (int client = 1; client < maxplayers + 1; client++)
@@ -122,12 +116,14 @@ public void OnPluginStart()
 			numPlayers++;
 		}
 	}
+
+
 }
 
 // capture bot ids so we know which bot is representing what player!
 public void OnClientPutInServer(int client)
 {
-	if (IsFakeClient(client)) //if a userid still needs a bot paired with it for replay
+	if (IsFakeClient(client) && playing) //if a userid still needs a bot paired with it for replay
 	{
 		new userIdRequiringABot = GetArrayCell(playbackUsersNeedingBots, 0);
 		RemoveFromArray(playbackUsersNeedingBots, 0);
@@ -157,53 +153,7 @@ public void OnGameFrame()
 {
 	if (recording)
 	{
-		if (frameBuffIndex == 100) //time to write to file!
-		{
-			//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "saving! %d", nextFrameRecord);
 
-			for (new i = 0; i < BUFF_SIZE; i++)
-			{
-				WriteFile(hedgeFile, frameInfoBuff[i][0], _:NextFrameInfo, 4);
-				WriteFile(hedgeFile, frameBuff[i][0], _:Frame, 4);
-
-				new frameNum = frameInfoBuff[i][nextFrame];
-				bool foundAllSparseEventsForFrame = false;
-				//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "weaponswitchesbuff size %d", GetArraySize(weaponSwitchesBuff));
-				while (GetArraySize(weaponSwitchesBuff) > 0 && !foundAllSparseEventsForFrame)
-				{
-					GetArrayArray(weaponSwitchesBuff, 0, weaponSwitchArr[0]);
-					GetArrayArray(weaponSwitchesFrameInfoBuff, 0, frameInfoArr[0]);
-					//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "weaponswitchframe %d currentframe %d", nextWeaponSwitchArr[nextFrame], frameNum);
-					if (frameInfoArr[nextFrame] == frameNum) //if this weapon switch event occurs on the same frame as the nonsparse events (angle and velocity updates contained in Frame)
-					{
-						PrintToConsole(FindTarget(0, "Hedgehog Hero"), "writing weapon switch to wep %d", weaponSwitchArr[weaponId]);
-						WriteFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4); //write a description of the upcoming sparse event
-						WriteFile(hedgeFile, weaponSwitchArr[0], _:WeaponSwitch, 4); //write the sparse weapon switch event;
-						//remove from buffer
-						RemoveFromArray(weaponSwitchesBuff, 0);
-						RemoveFromArray(weaponSwitchesFrameInfoBuff, 0);
-					} else
-					{
-						foundAllSparseEventsForFrame = true; //done interleaving sparse events for this framez
-					}
-				}
-
-
-				FlushFile(hedgeFile);
-			}
-			frameBuffIndex = 0;
-		}
-		// // get all the currently connected clients
-		// int maxplayers = GetMaxClients();
-		// numPlayers = 0;
-		// for (int j = 1; j < maxplayers + 1; j++)
-		// {
-		// 	if (IsClientInGame(j) && !IsFakeClient(j) && IsPlayerAlive(j))
-		// 	{
-		// 		players_arr[numPlayers] = j;
-		// 		numPlayers++;
-		// 	}
-		// }
 	}
 	else if (playing)//playback
 	{
@@ -336,11 +286,15 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 		// 	GetClientUserId(clientId), frameArr[velocity][0], frameArr[velocity][1], frameArr[velocity][2]);
 		// ShowActivity(0, "size of struct: %d", _:Frame);
 
-		Array_Copy(frameArr[0], frameBuff[frameBuffIndex][0], _:Frame);
-		Array_Copy(frameInfoArr[0], frameInfoBuff[frameBuffIndex][0], _:NextFrameInfo);
-		frameBuffIndex++;
-		//WriteFile(hedgeFile, frameArr[0], _:Frame, 4);
-		//FlushFile(hedgeFile);
+		if ((buffIndex + _:NextFrameInfo + _:Frame) > BUFF_SIZE) //if the buffer is full clear it out first
+		{
+			WriteBufferToFile();
+		}
+		Array_Copy(frameInfoArr[0], eventBuffer[buffIndex], _:NextFrameInfo);
+		buffIndex = buffIndex + _:NextFrameInfo;
+		Array_Copy(frameArr[0], eventBuffer[buffIndex], _:Frame);
+		buffIndex = buffIndex + _:Frame;
+		
 		//PrintToConsole(FindTarget(0, "Hedgehog Hero"), "wrote frame %d / pos %f", currFrame, frameArr[position][0]);
 	}
 	else if (playing && IsFakeClient(client))
@@ -385,7 +339,7 @@ public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3
 public void SpawnBotFor(int userIdRecord)
 {
 	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "spawnbotfor called for player %d", userIdRecord);
-	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "pyro");
 	PushArrayCell(playbackUserIds, userIdRecord); //put this useridrecord and its associated bot id (of the bot acting it for this useridrecord) at the same indices in their respective arrays.
 	PushArrayCell(playbackUsersNeedingBots, userIdRecord);
 	PushArrayCell(botClientsInitiallyTeleported, false);
@@ -418,8 +372,11 @@ public Action OnWeaponSwitch(int client, int weapon)
 		}
 
 		
-		PushArrayArray(weaponSwitchesBuff, weaponSwitchArr[0]);
-
+		if ((buffIndex + _:WeaponSwitch + _:NextFrameInfo) > BUFF_SIZE) //if the buffer is full clear it out first
+		{
+			WriteBufferToFile();
+		}
+		
 		
 
 		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "user id %d switched to weapon %d called %s",
@@ -427,9 +384,40 @@ public Action OnWeaponSwitch(int client, int weapon)
 
 		frameInfoArr[frameType] = WEAPON_SWITCH;
 		frameInfoArr[nextFrame] = currFrame - 1;
-		PushArrayArray(weaponSwitchesFrameInfoBuff, frameInfoArr[0]);
+		Array_Copy(frameInfoArr[0],  eventBuffer[buffIndex], _:NextFrameInfo);
+		buffIndex = buffIndex + _:NextFrameInfo;
+		Array_Copy(weaponSwitchArr[0], eventBuffer[buffIndex], _:WeaponSwitch);
+		buffIndex = buffIndex + _:WeaponSwitch;
 	}
 	return Plugin_Continue;
+}
+
+public void WriteBufferToFile()
+{
+	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "writing buffer to file");
+	new currIndex = 0; //where in the buffer we will read from next
+
+	while(currIndex < buffIndex)
+	{
+		//see what the type of the next event is so we know how much to write to file from the buffer
+		Array_Copy(eventBuffer[currIndex], frameInfoArr[0], _:NextFrameInfo);
+		WriteFile(hedgeFile, frameInfoArr[0], _:NextFrameInfo, 4); //write a descriptor of the upcoming event
+		currIndex = currIndex + _:NextFrameInfo;
+		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "writing frame info for frame %d", frameInfoArr[nextFrame]);
+		new amtToWrite; //for the next event not including the frame info
+		if (PLAYER_INFO == frameInfoArr[frameType])
+		{
+			amtToWrite = _:Frame;
+		}
+		else if (WEAPON_SWITCH == frameInfoArr[frameType])
+		{
+			amtToWrite = _:WeaponSwitch;
+		}
+		WriteFile(hedgeFile, eventBuffer[currIndex], amtToWrite, 4);
+		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "amt written: %d", amtToWrite);
+		currIndex = currIndex + amtToWrite;
+	}
+	buffIndex = 0; //start overwriting buffer from beginning with new events
 }
 
 //hook into say command to allow plugin control
@@ -488,7 +476,8 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 
 public void StartRecording()
 {
-	KickBots();
+	//KickBots();
+	SpawnBots();
 	currFrame = 0;
 	recording = true;
 	hedgeFile = OpenFile("test.hedge", "wb");
@@ -536,3 +525,36 @@ public void ClearArrays()
 	ClearArray(botPosits);
 	ClearArray(botPredVels);
 }
+
+
+public void SpawnBots()
+{
+
+	// ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	// ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	// ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	// ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	// ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	// ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	// ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	// ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	// ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	// ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	// ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
+	// PrintToConsole(FindTarget(0, "Hedgehog Hero"), "spawned bots");
+}
+
+/**
+help from / thanks to
+
+happs
+sizzlingcalamari
+tragicservers
+nite
+iggynacio
+charis
+tepi
+papiyisus
+botmimic
+
+*/
