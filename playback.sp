@@ -31,6 +31,8 @@ new Handle:botHealths; //recorded health (rocket jumping does inconsistent damag
 #define WEAPON_SWITCH 1 // frame with info about a weapon switch
 #define TEAM_CHANGE 2 // when the player changes teams (or selects a team for the first time or the recording starts and they're on a team)
 #define CLASS_CHANGE 3 // when the player changes class (or selects a class for the first time or the recording starts and they have a class)
+#define PLAYER_DEATH 4 // when a player dies ::D
+
 
 enum NextInfo //gives information in the savefile about the upcoming frame/event
 {
@@ -68,6 +70,11 @@ enum TeamChange
 	newTeam,
 }
 
+enum PlayerDeath
+{
+	playerDeathUserId = 0,
+}
+
 
 //playback and recording vars
 new Float:posRecord[3];
@@ -94,6 +101,7 @@ new buffIndex = 0;
 new weaponSwitchArr[_:WeaponSwitch];
 new teamChangeArr[_:TeamChange];
 new classChangeArr[_:ClassChange];
+new playerDeathArr[_:PlayerDeath];
 ///////
 
 public Plugin myinfo =
@@ -135,7 +143,21 @@ public void OnPluginStart()
 		}
 	}
 	AddCommandListener(CommandJoinTeam, "jointeam"); //listen for team switch events
-	HookEvent("player_changeclass", EventClassChange);
+	HookEvent("player_changeclass", EventClassChange); //listen for class change events
+	HookEvent("player_death", EventPlayerDeath); //listen for player death events
+}
+
+public Action:EventPlayerDeath(Event event, const char[] name, bool dontBroadcast)
+{
+	playerDeathArr[playerDeathUserId] = event.GetInt("userid");
+	frameInfoArr[nextFrame] = currFrame - 1;
+	frameInfoArr[frameType] = PLAYER_DEATH;
+	if ((buffIndex + sizeof(frameInfoArr) + sizeof(playerDeathArr)) > BUFF_SIZE)
+	{
+		WriteBufferToFile();
+	}
+	WriteToBuffer(frameInfoArr[0], sizeof(frameInfoArr));
+	WriteToBuffer(playerDeathArr[0], sizeof(playerDeathArr));
 }
 
 public Action:EventClassChange(Event event, const char[] name, bool dontBroadcast)
@@ -322,6 +344,13 @@ public void OnGameFrame()
 					ReadFile(hedgeFile, classChangeArr[0], _:ClassChange, 4);
 					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, classChangeArr[classChangeUserId]));
 					TF2_SetPlayerClass(clientId, classChangeArr[newClass], false, true);
+				}
+				else if (PLAYER_DEATH == nextFrameTypeRecord)
+				{
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "player death read xd");
+					ReadFile(hedgeFile, playerDeathArr[0], _:PlayerDeath, 4);
+					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, playerDeathArr[playerDeathUserId]));
+					ForcePlayerSuicide(clientId); //kill the player!
 				}
 			}
 			else //hit the next frame, so stop reading for now and put the file pointer back at the beginning of the NextInfo
