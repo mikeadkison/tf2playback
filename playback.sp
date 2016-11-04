@@ -25,13 +25,13 @@ new Handle:botPredVels;
 new Handle:botHealths; //recorded health (rocket jumping does inconsistent damage on replay)
 
 
-
 //frame types
 #define PLAYER_INFO 0 // frame with position and angle info
 #define WEAPON_SWITCH 1 // frame with info about a weapon switch
 #define TEAM_CHANGE 2 // when the player changes teams (or selects a team for the first time or the recording starts and they're on a team)
 #define CLASS_CHANGE 3 // when the player changes class (or selects a class for the first time or the recording starts and they have a class)
 #define PLAYER_DEATH 4 // when a player dies ::D
+#define PLAYER_SPAWN 5
 
 
 enum NextInfo //gives information in the savefile about the upcoming frame/event
@@ -75,6 +75,11 @@ enum PlayerDeath
 	playerDeathUserId = 0,
 }
 
+enum PlayerSpawn
+{
+	playerSpawnUserId,
+	playerSpawnClass,
+}
 
 //playback and recording vars
 new Float:posRecord[3];
@@ -102,6 +107,9 @@ new weaponSwitchArr[_:WeaponSwitch];
 new teamChangeArr[_:TeamChange];
 new classChangeArr[_:ClassChange];
 new playerDeathArr[_:PlayerDeath];
+new playerSpawnArr[_:PlayerSpawn];
+
+new Handle:botClassQueue; //when a bot spawns it should take a class off the front of this queue and become it.
 ///////
 
 public Plugin myinfo =
@@ -132,6 +140,7 @@ public void OnPluginStart()
 	botPredVels = new ArrayList(3, 0);
 	botHealths = new ArrayList(1, 0);
 
+	botClassQueue = new ArrayList(1, 0);
 
 	int maxplayers = GetMaxClients();
 	for (int client = 1; client < maxplayers + 1; client++)
@@ -145,33 +154,65 @@ public void OnPluginStart()
 	AddCommandListener(CommandJoinTeam, "jointeam"); //listen for team switch events
 	HookEvent("player_changeclass", EventClassChange); //listen for class change events
 	HookEvent("player_death", EventPlayerDeath); //listen for player death events
+	HookEvent("player_spawn", EventPlayerSpawn, EventHookMode_Pre);
 }
 
+public Action:EventPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
+{
+	if (recording)
+	{
+		playerSpawnArr[playerSpawnUserId] = event.GetInt("userId");
+		playerSpawnArr[playerSpawnClass] = event.GetInt("class");
+		frameInfoArr[nextFrame] = currFrame - 1;
+		frameInfoArr[frameType] = PLAYER_SPAWN;
+		if ((buffIndex + sizeof(frameInfoArr) + sizeof(playerSpawnArr)) > BUFF_SIZE)
+		{
+			WriteBufferToFile();
+		}
+		WriteToBuffer(frameInfoArr[0], sizeof(frameInfoArr));
+		WriteToBuffer(playerSpawnArr[0], sizeof(playerSpawnArr));
+	}
+	else if (playing && IsFakeClient(GetClientOfUserId(event.GetInt("userId"))))
+	{
+		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "begin forced class change to %d", GetArrayCell(botClassQueue, 0));
+		TF2_SetPlayerClass(GetClientOfUserId(event.GetInt("userId")), GetArrayCell(botClassQueue, 0)); 
+		RemoveFromArray(botClassQueue, 0);
+		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "forced class change done");
+		return Plugin_Continue;
+	}
+	return Plugin_Continue;
+}
 public Action:EventPlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
-	playerDeathArr[playerDeathUserId] = event.GetInt("userid");
-	frameInfoArr[nextFrame] = currFrame - 1;
-	frameInfoArr[frameType] = PLAYER_DEATH;
-	if ((buffIndex + sizeof(frameInfoArr) + sizeof(playerDeathArr)) > BUFF_SIZE)
+	if (recording)
 	{
-		WriteBufferToFile();
+		playerDeathArr[playerDeathUserId] = event.GetInt("userid");
+		frameInfoArr[nextFrame] = currFrame - 1;
+		frameInfoArr[frameType] = PLAYER_DEATH;
+		if ((buffIndex + sizeof(frameInfoArr) + sizeof(playerDeathArr)) > BUFF_SIZE)
+		{
+			WriteBufferToFile();
+		}
+		WriteToBuffer(frameInfoArr[0], sizeof(frameInfoArr));
+		WriteToBuffer(playerDeathArr[0], sizeof(playerDeathArr));
 	}
-	WriteToBuffer(frameInfoArr[0], sizeof(frameInfoArr));
-	WriteToBuffer(playerDeathArr[0], sizeof(playerDeathArr));
 }
 
 public Action:EventClassChange(Event event, const char[] name, bool dontBroadcast)
 {
-	classChangeArr[classChangeUserId] = event.GetInt("userid");
-	classChangeArr[newClass] = event.GetInt("class");
-	frameInfoArr[nextFrame] = currFrame - 1;
-	frameInfoArr[frameType] = CLASS_CHANGE;
-	if ((buffIndex + sizeof(frameInfoArr) + sizeof(classChangeArr)) > BUFF_SIZE)
+	if (recording)
 	{
-		WriteBufferToFile();
+		classChangeArr[classChangeUserId] = event.GetInt("userid");
+		classChangeArr[newClass] = event.GetInt("class");
+		frameInfoArr[nextFrame] = currFrame - 1;
+		frameInfoArr[frameType] = CLASS_CHANGE;
+		if ((buffIndex + sizeof(frameInfoArr) + sizeof(classChangeArr)) > BUFF_SIZE)
+		{
+			WriteBufferToFile();
+		}
+		WriteToBuffer(frameInfoArr[0], sizeof(frameInfoArr));
+		WriteToBuffer(classChangeArr[0], sizeof(classChangeArr));
 	}
-	WriteToBuffer(frameInfoArr[0], sizeof(frameInfoArr));
-	WriteToBuffer(classChangeArr[0], sizeof(classChangeArr));
 	return Plugin_Continue;
 }
 
@@ -241,12 +282,14 @@ public void OnClientPutInServer(int client)
 
 public void OnGameFrame()
 {
+	
 	if (recording)
 	{
 
 	}
 	else if (playing)//playback
 	{
+
 		//PrintToChatAll("Playing");
 		bool hitNextFrame = false;
 		//PrintToChatAll("success: %d", success);
@@ -258,15 +301,16 @@ public void OnGameFrame()
 			nextFrameTypeRecord = frameInfoArr[frameType];
 			if (nextFrameRecord == currFrame)
 			{
+				new userIdRecord = frameArr[userId];
+				new userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
 				if (PLAYER_INFO == nextFrameTypeRecord) //nonsparse event - player rotation and location and button info
 				{
 					//get next frame
 					ReadFile(hedgeFile, frameArr[0], _:Frame, 4);
-					new userIdRecord = frameArr[userId];
-					new userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
+					
 					if (userIdRecordIndex == -1) //if thhis user id has not been encountered before (no bot created for it)
 					{
-						SpawnBotFor(userIdRecord);
+						//SpawnBotFor(userIdRecord);
 					}
 					else //there is already a bot representing this useridrecord ! It will be at the same index in the botid array
 					{
@@ -316,10 +360,10 @@ public void OnGameFrame()
 					//get next weapon switch info
 					ReadFile(hedgeFile, weaponSwitchArr[0], _:WeaponSwitch, 4);
 					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "read file for weapon switch");
-					new userIdRecord = weaponSwitchArr[weaponSwitcherUserId];
+					new weaponSwitchUserIdRecord = weaponSwitchArr[weaponSwitcherUserId];
 					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "index of recorded userid %d is %d with wep %s",
-						userIdRecord, FindValueInArray(playbackUserIds, userIdRecord), weaponSwitchArr[weaponId]);
-					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, userIdRecord));
+						weaponSwitchUserIdRecord, FindValueInArray(playbackUserIds, weaponSwitchUserIdRecord), weaponSwitchArr[weaponId]);
+					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, weaponSwitchUserIdRecord));
 					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "switched to wep %s on bot %d", weaponSwitchArr[weaponId], GetClientUserId(clientId));
 
 					TF2Items_GiveWeapon(clientId, weaponSwitchArr[weaponId]);
@@ -332,8 +376,8 @@ public void OnGameFrame()
 				{
 					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "team change found xD");
 					ReadFile(hedgeFile, teamChangeArr[0], _:TeamChange, 4);
-					new userIdRecord = teamChangeArr[teamChangeUserId];
-					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, userIdRecord));
+					new teamChangeUserIdRecord = teamChangeArr[teamChangeUserId];
+					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, teamChangeUserIdRecord));
 
 					//force the bot to switch teams
 					TF2_ChangeClientTeam(clientId, teamChangeArr[newTeam]);
@@ -351,6 +395,17 @@ public void OnGameFrame()
 					ReadFile(hedgeFile, playerDeathArr[0], _:PlayerDeath, 4);
 					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, playerDeathArr[playerDeathUserId]));
 					ForcePlayerSuicide(clientId); //kill the player!
+				}
+				else if (PLAYER_SPAWN == nextFrameTypeRecord)
+				{
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "player spawn read xd:");
+					ReadFile(hedgeFile, playerSpawnArr[0], _:PlayerSpawn, 4);
+					if (userIdRecordIndex == -1)
+					{
+						PushArrayCell(botClassQueue, playerSpawnArr[playerSpawnClass]);
+						SpawnBotFor(userIdRecord);
+						PrintToConsole(FindTarget(0, "Hedgehog Hero"), "spawning bot initially");
+					}
 				}
 			}
 			else //hit the next frame, so stop reading for now and put the file pointer back at the beginning of the NextInfo
@@ -595,6 +650,39 @@ public void StartRecording()
 	currFrame = 0;
 	recording = true;
 	hedgeFile = OpenFile("test.hedge", "wb");
+	RecordInitialClasses();
+	//RecordInitialTeams();
+}
+
+// write the events to record everyone's initial classes
+public void RecordInitialClasses()
+{
+	for (new i = 1; i <= MaxClients; i++)
+	{
+	    if (IsClientInGame(i)) //TODO check that not spectator
+	    {
+	        // Only trigger for client indexes actually in the game
+	        playerSpawnArr[playerSpawnUserId] = GetClientUserId(i);
+	        playerSpawnArr[playerSpawnClass] = TF2_GetPlayerClass(i);
+
+	        frameInfoArr[nextFrame] = currFrame;
+	        frameInfoArr[frameType] = PLAYER_SPAWN;
+	        if ((buffIndex + sizeof(frameInfoArr) + sizeof(playerSpawnArr)) > BUFF_SIZE)
+	        {
+	        	WriteBufferToFile();
+	        }
+	        WriteToBuffer(frameInfoArr[0], sizeof(frameInfoArr));
+	        WriteToBuffer(playerSpawnArr[0], sizeof(playerSpawnArr));
+	        PrintToConsole(FindTarget(0, "Hedgehog Hero"), "recorded initial player spawne for id %d", GetClientUserId(i));
+	    }
+	    //PrintToConsole(FindTarget(0, "Hedgehog Hero"), "looped for i value of %d", i);
+	}
+}
+
+// write the events to record everyone's initial teams
+public void RecordInitialTeams()
+{
+
 }
 
 public void StopRecording()
