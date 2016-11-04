@@ -166,6 +166,7 @@ public Action:EventPlayerSpawn(Event event, const char[] name, bool dontBroadcas
 	{
 		playerSpawnArr[playerSpawnUserId] = event.GetInt("userId");
 		playerSpawnArr[playerSpawnClass] = event.GetInt("class");
+		playerSpawnArr[playerSpawnTeam] = event.GetInt("team");
 		frameInfoArr[nextFrame] = currFrame - 1;
 		frameInfoArr[frameType] = PLAYER_SPAWN;
 		if ((buffIndex + sizeof(frameInfoArr) + sizeof(playerSpawnArr)) > BUFF_SIZE)
@@ -409,6 +410,12 @@ public void OnGameFrame()
 						PushArrayCell(botTeamQueue, playerSpawnArr[playerSpawnTeam]);
 						SpawnBotFor(userIdRecord);
 						PrintToConsole(FindTarget(0, "Hedgehog Hero"), "spawning bot initially");
+					}
+					else
+					{
+						new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, playerSpawnArr[playerSpawnUserId]));
+						TF2_ChangeClientTeam(clientId, playerSpawnArr[playerSpawnTeam]);
+						TF2_SetPlayerClass(clientId, playerSpawnArr[playerSpawnClass], false, true);
 					}
 				}
 			}
