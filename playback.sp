@@ -29,7 +29,8 @@ new Handle:botHealths; //recorded health (rocket jumping does inconsistent damag
 //frame types
 #define PLAYER_INFO 0 // frame with position and angle info
 #define WEAPON_SWITCH 1 // frame with info about a weapon switch
-#define TEAM_CHANGE 2 // when the player changes teams (or selects a team for the first time)
+#define TEAM_CHANGE 2 // when the player changes teams (or selects a team for the first time or the recording starts and they're on a team)
+#define CLASS_CHANGE 3 // when the player changes class (or selects a class for the first time or the recording starts and they have a class)
 
 enum NextInfo //gives information in the savefile about the upcoming frame/event
 {
@@ -127,14 +128,29 @@ public void OnPluginStart()
 	int maxplayers = GetMaxClients();
 	for (int client = 1; client < maxplayers + 1; client++)
 	{
-		if (IsClientInGame(client) /*&& !IsFakeClient(client)*/)
+		if (IsClientInGame(client) && !IsFakeClient(client))
 		{
 			SDKHook(client, SDKHook_WeaponSwitchPost, OnWeaponSwitch); //need this to detect weapon switches when recording
 			numPlayers++;
 		}
 	}
 	AddCommandListener(CommandJoinTeam, "jointeam"); //listen for team switch events
+	HookEvent("player_changeclass", EventClassChange);
+}
 
+public Action:EventClassChange(Event event, const char[] name, bool dontBroadcast)
+{
+	classChangeArr[classChangeUserId] = event.GetInt("userid");
+	classChangeArr[newClass] = event.GetInt("class");
+	frameInfoArr[nextFrame] = currFrame - 1;
+	frameInfoArr[frameType] = CLASS_CHANGE;
+	if ((buffIndex + sizeof(frameInfoArr) + sizeof(classChangeArr)) > BUFF_SIZE)
+	{
+		WriteBufferToFile();
+	}
+	WriteToBuffer(frameInfoArr[0], sizeof(frameInfoArr));
+	WriteToBuffer(classChangeArr[0], sizeof(classChangeArr));
+	return Plugin_Continue;
 }
 
 public Action:CommandJoinTeam(client, const String:command[], args)
@@ -157,6 +173,10 @@ public Action:CommandJoinTeam(client, const String:command[], args)
 		}
 		frameInfoArr[nextFrame] = currFrame - 1; //TODO check if this needs to be currFrame  or currFrame - 1
 		frameInfoArr[frameType] = TEAM_CHANGE;
+		if ((buffIndex + sizeof(frameInfoArr) + sizeof(teamChangeArr)) > BUFF_SIZE) //make sure there's space in buffer for next 2 things to be put there in order
+		{
+			WriteBufferToFile();
+		}
 		WriteToBuffer(frameInfoArr[0], sizeof(frameInfoArr));
 		WriteToBuffer(teamChangeArr[0], sizeof(teamChangeArr));
 	}
@@ -191,9 +211,9 @@ public void OnClientPutInServer(int client)
 		PrintToChatAll("bot id %d recorded", botId);
 		//SDKHook(client, SDKHook_PostThink, Hook_PostActions);
 	}
-	else //need this to detect weapon switches when recording
+	else if (!IsFakeClient(client))
 	{
-		SDKHook(client, SDKHook_WeaponSwitchPost, OnWeaponSwitch);
+		SDKHook(client, SDKHook_WeaponSwitchPost, OnWeaponSwitch); //need this to detect weapon switches when recording
 	}
 }
 
@@ -296,6 +316,13 @@ public void OnGameFrame()
 					//force the bot to switch teams
 					TF2_ChangeClientTeam(clientId, teamChangeArr[newTeam]);
 				}
+				else if (CLASS_CHANGE == nextFrameTypeRecord)
+				{
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "class change found xp");
+					ReadFile(hedgeFile, classChangeArr[0], _:ClassChange, 4);
+					new clientId = GetArrayCell(botClientIds, FindValueInArray(playbackUserIds, classChangeArr[classChangeUserId]));
+					TF2_SetPlayerClass(clientId, classChangeArr[newClass], false, true);
+				}
 			}
 			else //hit the next frame, so stop reading for now and put the file pointer back at the beginning of the NextInfo
 			{
@@ -316,7 +343,7 @@ public void OnGameFrame()
 
 public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if (recording /*&& !IsFakeClient(client)*/)
+	if (recording && !IsFakeClient(client))
 	{
 		//describe the upcoming frame
 		frameInfoArr[nextFrame] = currFrame - 1; //currframe is incremented in ongameframe but it's not actually the next frame yet because onplayercmd is called after ongameframe
@@ -589,6 +616,7 @@ public void ClearArrays()
 public void SpawnBots()
 {
 
+/*	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
 	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
 	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
 	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
@@ -599,8 +627,7 @@ public void SpawnBots()
 	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
 	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
 	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
-	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
-	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "spawned bots");
+	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "spawned bots");*/
 }
 
 /**
