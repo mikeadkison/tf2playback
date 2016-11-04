@@ -79,6 +79,7 @@ enum PlayerSpawn
 {
 	playerSpawnUserId,
 	playerSpawnClass,
+	playerSpawnTeam,
 }
 
 //playback and recording vars
@@ -109,7 +110,8 @@ new classChangeArr[_:ClassChange];
 new playerDeathArr[_:PlayerDeath];
 new playerSpawnArr[_:PlayerSpawn];
 
-new Handle:botClassQueue; //when a bot spawns it should take a class off the front of this queue and become it.
+new Handle:botClassQueue; //when a bot initially spawns (enters the game) it should take a class off the front of this queue and become it.
+new Handle:botTeamQueue; //when a bot initially spawns it should take the team off the front of this queue and become it.
 ///////
 
 public Plugin myinfo =
@@ -141,6 +143,7 @@ public void OnPluginStart()
 	botHealths = new ArrayList(1, 0);
 
 	botClassQueue = new ArrayList(1, 0);
+	botTeamQueue = new ArrayList(1, 0);
 
 	int maxplayers = GetMaxClients();
 	for (int client = 1; client < maxplayers + 1; client++)
@@ -174,10 +177,10 @@ public Action:EventPlayerSpawn(Event event, const char[] name, bool dontBroadcas
 	}
 	else if (playing && IsFakeClient(GetClientOfUserId(event.GetInt("userId"))))
 	{
-		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "begin forced class change to %d", GetArrayCell(botClassQueue, 0));
-		TF2_SetPlayerClass(GetClientOfUserId(event.GetInt("userId")), GetArrayCell(botClassQueue, 0)); 
+		TF2_SetPlayerClass(GetClientOfUserId(event.GetInt("userId")), GetArrayCell(botClassQueue, 0));
 		RemoveFromArray(botClassQueue, 0);
-		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "forced class change done");
+		TF2_ChangeClientTeam(GetClientOfUserId(event.GetInt("userId")), GetArrayCell(botTeamQueue, 0));
+		RemoveFromArray(botTeamQueue, 0);
 		return Plugin_Continue;
 	}
 	return Plugin_Continue;
@@ -403,6 +406,7 @@ public void OnGameFrame()
 					if (userIdRecordIndex == -1)
 					{
 						PushArrayCell(botClassQueue, playerSpawnArr[playerSpawnClass]);
+						PushArrayCell(botTeamQueue, playerSpawnArr[playerSpawnTeam]);
 						SpawnBotFor(userIdRecord);
 						PrintToConsole(FindTarget(0, "Hedgehog Hero"), "spawning bot initially");
 					}
@@ -650,12 +654,12 @@ public void StartRecording()
 	currFrame = 0;
 	recording = true;
 	hedgeFile = OpenFile("test.hedge", "wb");
-	RecordInitialClasses();
+	RecordInitialSpawnInfo();
 	//RecordInitialTeams();
 }
 
 // write the events to record everyone's initial classes
-public void RecordInitialClasses()
+public void RecordInitialSpawnInfo()
 {
 	for (new i = 1; i <= MaxClients; i++)
 	{
@@ -664,6 +668,7 @@ public void RecordInitialClasses()
 	        // Only trigger for client indexes actually in the game
 	        playerSpawnArr[playerSpawnUserId] = GetClientUserId(i);
 	        playerSpawnArr[playerSpawnClass] = TF2_GetPlayerClass(i);
+	        playerSpawnArr[playerSpawnTeam] = TF2_GetClientTeam(i);
 
 	        frameInfoArr[nextFrame] = currFrame;
 	        frameInfoArr[frameType] = PLAYER_SPAWN;
@@ -679,11 +684,6 @@ public void RecordInitialClasses()
 	}
 }
 
-// write the events to record everyone's initial teams
-public void RecordInitialTeams()
-{
-
-}
 
 public void StopRecording()
 {
