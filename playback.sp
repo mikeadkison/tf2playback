@@ -26,13 +26,13 @@ new Handle:botHealths; //recorded health (rocket jumping does inconsistent damag
 
 
 //frame types
-#define PLAYER_INFO 0 // frame with position and angle info
-#define WEAPON_SWITCH 1 // frame with info about a weapon switch
-#define TEAM_CHANGE 2 // when the player changes teams (or selects a team for the first time or the recording starts and they're on a team)
-#define CLASS_CHANGE 3 // when the player changes class (or selects a class for the first time or the recording starts and they have a class)
-#define PLAYER_DEATH 4 // when a player dies ::D
-#define PLAYER_SPAWN 5
-
+#define PLAYER_INFO 	0 // frame with position and angle info
+#define WEAPON_SWITCH 	1 // frame with info about a weapon switch
+#define TEAM_CHANGE 	2 // when the player changes teams (or selects a team for the first time or the recording starts and they're on a team)
+#define CLASS_CHANGE 	3 // when the player changes class (or selects a class for the first time or the recording starts and they have a class)
+#define PLAYER_DEATH 	4 // when a player dies ::D
+#define PLAYER_SPAWN 	5
+#define BUILD 			6
 
 enum NextInfo //gives information in the savefile about the upcoming frame/event
 {
@@ -82,6 +82,13 @@ enum PlayerSpawn
 	playerSpawnTeam,
 }
 
+enum Build
+{
+	buildUserId,
+	buildArg0,
+	buildArg1,
+}
+
 //playback and recording vars
 new Float:posRecord[3];
 new Float:angRecord[3];
@@ -109,6 +116,7 @@ new teamChangeArr[_:TeamChange];
 new classChangeArr[_:ClassChange];
 new playerDeathArr[_:PlayerDeath];
 new playerSpawnArr[_:PlayerSpawn];
+new buildArr[_:Build];
 
 new Handle:botClassQueue; //when a bot initially spawns (enters the game) it should take a class off the front of this queue and become it.
 new Handle:botTeamQueue; //when a bot initially spawns it should take the team off the front of this queue and become it.
@@ -128,7 +136,7 @@ public void OnPluginStart()
 	PrintToServer("Starting playback plugin");
 
 	KickBots();
-
+	ServerCommand("sv_cheats 1; bot -name %s -team %s -class %s; sv_cheats 0", "testbot", "blue", "engineer");
 	numPlayers = 0;
 
 	playbackUserIds = new ArrayList(1, 0);
@@ -155,6 +163,7 @@ public void OnPluginStart()
 		}
 	}
 	AddCommandListener(CommandJoinTeam, "jointeam"); //listen for team switch events
+	AddCommandListener(CommandBuild, "build");
 	HookEvent("player_changeclass", EventClassChange); //listen for class change events
 	HookEvent("player_death", EventPlayerDeath); //listen for player death events
 	HookEvent("player_spawn", EventPlayerSpawn, EventHookMode_Pre);
@@ -220,12 +229,46 @@ public Action:EventClassChange(Event event, const char[] name, bool dontBroadcas
 	return Plugin_Continue;
 }
 
+public Action:CommandBuild(client, const String:command[], args)
+{
+	if (recording)
+	{
+		new String:arg0Str[2];
+		new String:arg1Str[2];
+
+
+		GetCmdArg(1, arg0Str, sizeof(arg0Str));
+		GetCmdArg(2, arg1Str, sizeof(arg1Str));
+
+		buildArr[buildUserId] = GetClientUserId(client);
+		buildArr[buildArg0] = StringToInt(arg0Str);
+		buildArr[buildArg1] = StringToInt(arg1Str);
+
+		if ((buffIndex + sizeof(frameInfoArr) + sizeof(buildArr)) > BUFF_SIZE)
+		{
+			WriteBufferToFile();
+		}
+		frameInfoArr[nextFrame] = currFrame - 1;
+		frameInfoArr[frameType] = BUILD;
+		WriteToBuffer(frameInfoArr[0], sizeof(frameInfoArr));
+		WriteToBuffer(buildArr[0], sizeof(buildArr));
+
+		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "wrote a build command: %d %d",
+			StringToInt(arg0Str), StringToInt(arg1Str));
+	}
+	/*char buildCmdStr[10];
+	StrCat(buildCmdStr, sizeof(buildCmdStr), "build");
+	StrCat(buildCmdStr, sizeof(buildCmdStr), " ");
+	StrCat(buildCmdStr, sizeof(buildCmdStr), arg0Str);
+	StrCat(buildCmdStr, sizeof(buildCmdStr), arg1Str);*/
+}
+
 public Action:CommandJoinTeam(client, const String:command[], args)
 {
 	new String:teamArgStr[5];
 	GetCmdArg(1, teamArgStr, sizeof(teamArgStr));
 	PrintToConsole(FindTarget(0, "Hedgehog Hero"), "jointeam command detected %d", teamArgStr);
-	if (recording && !IsFakeClient(client)) //record the team change into the buffer
+	if (recording /*&& !IsFakeClient(client)*/) //record the team change into the buffer
 	{
 		teamChangeArr[teamChangeUserId] = GetClientUserId(client);
 		if (StrEqual(teamArgStr, "blue"))
@@ -305,13 +348,14 @@ public void OnGameFrame()
 			nextFrameTypeRecord = frameInfoArr[frameType];
 			if (nextFrameRecord == currFrame)
 			{
-				new userIdRecord = frameArr[userId];
-				new userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
+
 				if (PLAYER_INFO == nextFrameTypeRecord) //nonsparse event - player rotation and location and button info
 				{
 					//get next frame
 					ReadFile(hedgeFile, frameArr[0], _:Frame, 4);
-					
+					new userIdRecord = frameArr[userId];
+					new userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
+
 					if (userIdRecordIndex == -1) //if thhis user id has not been encountered before (no bot created for it)
 					{
 						//SpawnBotFor(userIdRecord);
@@ -404,6 +448,8 @@ public void OnGameFrame()
 				{
 					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "player spawn read xd:");
 					ReadFile(hedgeFile, playerSpawnArr[0], _:PlayerSpawn, 4);
+					new userIdRecord = playerSpawnArr[playerSpawnUserId];
+					new userIdRecordIndex = FindValueInArray(playbackUserIds, userIdRecord);
 					if (userIdRecordIndex == -1)
 					{
 						PushArrayCell(botClassQueue, playerSpawnArr[playerSpawnClass]);
@@ -438,7 +484,7 @@ public void OnGameFrame()
 
 public Action:OnPlayerRunCmd(int client, int &buttons, int &impulse, float vel[3], float angles[3], int &weapon, int &subtype, int &cmdnum, int &tickcount, int &seed, int mouse[2])
 {
-	if (recording && !IsFakeClient(client))
+	if (recording /*&& !IsFakeClient(client)*/)
 	{
 		//describe the upcoming frame
 		frameInfoArr[nextFrame] = currFrame - 1; //currframe is incremented in ongameframe but it's not actually the next frame yet because onplayercmd is called after ongameframe
