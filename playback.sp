@@ -5,6 +5,8 @@
 #include <tf2_stocks>
 #include <tf2items_giveweapon>
 #include <tf2>
+#include <remote>
+#include <BuildingSpawnerExtreme>
 
 //new players_arr[MAXPLAYERS + 1];
 new numPlayers = 0;
@@ -254,8 +256,19 @@ public Action:CommandBuild(client, const String:command[], args)
 		WriteToBuffer(buildArr[0], sizeof(buildArr));
 
 		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "wrote a build command: %d %d",
-			StringToInt(arg0Str), StringToInt(arg1Str));
+			buildArr[buildArg0], buildArr[buildArg1]);
 	}
+	else
+	{
+		new String:arg0Str[2];
+		new String:arg1Str[2];
+
+
+		GetCmdArg(1, arg0Str, sizeof(arg0Str));
+		GetCmdArg(2, arg1Str, sizeof(arg1Str));
+		PrintToConsole(FindTarget(0, "Hedgehog Hero"), "build command has been hooked on playback %d %s %s", GetClientUserId(client), arg0Str, arg1Str);
+	}
+	return Plugin_Continue;
 	/*char buildCmdStr[10];
 	StrCat(buildCmdStr, sizeof(buildCmdStr), "build");
 	StrCat(buildCmdStr, sizeof(buildCmdStr), " ");
@@ -463,6 +476,15 @@ public void OnGameFrame()
 						TF2_ChangeClientTeam(clientId, playerSpawnArr[playerSpawnTeam]);
 						TF2_SetPlayerClass(clientId, playerSpawnArr[playerSpawnClass], false, true);
 					}
+				}
+				else if (BUILD == nextFrameTypeRecord)
+				{
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "build command read :p");
+					ReadFile(hedgeFile, buildArr[0], _:Build, 4);
+					new clientId = GetArrayCell(botClientIds,
+						FindValueInArray(playbackUserIds, buildArr[buildUserId]));
+					PrintToConsole(FindTarget(0, "Hedgehog Hero"), "build command for bot user id %d params %d %d", GetClientUserId(clientId), buildArr[buildArg0], buildArr[buildArg1]);
+					FakeClientCommand(clientId, "build %d %d", buildArr[buildArg0], buildArr[buildArg1]);
 				}
 			}
 			else //hit the next frame, so stop reading for now and put the file pointer back at the beginning of the NextInfo
@@ -694,6 +716,15 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
  		PrintToChatAll("Playing recording");
  		PlayRecording();
  		return Plugin_Handled;
+ 	}
+ 	else if (StrEqual(sArgs, "/buildsentry", false))
+ 	{
+ 		new Float:origin[3];
+ 		GetClientAbsOrigin(client, origin);
+ 		new Float:angles[3];
+ 		GetClientEyeAngles(client, angles);
+ 		BuildSentry(client, origin, angles, 1, false, false, false, -1, -1, -1, -1, 0.0);
+ 		PrintToChatAll("built sentry");
  	}
 	/* Let say continue normally */
 	return Plugin_Continue;
